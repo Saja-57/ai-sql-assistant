@@ -1,7 +1,8 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { CheckCircle2, History as HistoryIcon, RotateCw, XCircle } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { useHistory } from "@/lib/history";
+import { useEffect, useState } from "react";
+import { getHistory } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard/history")({
   component: HistoryPage,
@@ -9,12 +10,24 @@ export const Route = createFileRoute("/dashboard/history")({
 
 function HistoryPage() {
   const { t } = useI18n();
-  const { items, clear } = useHistory();
-  const navigate = useNavigate();
+  const [items, setItems] = useState<any[]>([]);
 
+ useEffect(() => {
+  async function loadHistory() {
+    const data = await getHistory();
+
+    if (Array.isArray(data)) {
+      setItems(data);
+    } else {
+      setItems([]);
+    }
+  }
+
+  loadHistory();
+}, []);
   const rerun = (q: string) => {
     sessionStorage.setItem("prefill-question", q);
-    navigate({ to: "/dashboard" });
+    Navigate({ to: "/dashboard" });
   };
 
   return (
@@ -26,11 +39,6 @@ function HistoryPage() {
           </h1>
           <p className="text-muted-foreground mt-1.5">{t.historySubtitle}</p>
         </div>
-        {items.length > 0 && (
-          <button onClick={clear} className="text-xs text-muted-foreground hover:text-destructive">
-            Clear
-          </button>
-        )}
       </header>
 
       {items.length === 0 ? (

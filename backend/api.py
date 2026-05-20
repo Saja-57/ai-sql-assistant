@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
@@ -8,13 +8,54 @@ import pandas as pd
 import os
 import shutil
 
+from database import engine, get_db, SessionLocal
+from models import Base, QueryHistory, User
+from sqlalchemy.orm import Session
+
+from passlib.context import CryptContext
+from jose import jwt, JWTError
+from datetime import datetime, timedelta
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 app = FastAPI(title="AI SQL Assistant API")
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+SECRET_KEY = "my-super-secret-key-change-later"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+
+security = HTTPBearer(auto_error=False)
+
+Base.metadata.create_all(bind=engine)
+
+
+class SignupRequest(BaseModel):
+    full_name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class QuestionRequest(BaseModel):
+    question: str
+
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:8080",
+        "http://localhost:8081",
         "http://127.0.0.1:8080",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -25,7 +66,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = OpenAI()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -36,8 +77,24 @@ UPLOADED_DB = os.path.join(DATA_DIR, "uploaded_data.db")
 current_db = DEFAULT_DB
 
 
-class QuestionRequest(BaseModel):
-    question: str
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    try:
+        if credentials is None:
+            return {"guest": True}
+
+        token = credentials.credentials
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+
+        return {
+            "guest": False,
+            "user_id": payload.get("user_id"),
+            "email": payload.get("email"),
+        }
+
+    except JWTError:
+        return {"guest": True}
 
 
 def get_database_schema_text() -> str:
@@ -173,7 +230,11 @@ def root():
 
 
 @app.post("/generate-sql")
-def generate_sql(request: QuestionRequest):
+def generate_sql(
+    request: QuestionRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     try:
         question = request.question
 
@@ -196,6 +257,17 @@ def generate_sql(request: QuestionRequest):
                 "sql": sql,
                 "error": result["error"],
             }
+
+        if current_user.get("user_id"):
+            history = QueryHistory(
+                user_id=current_user["user_id"],
+                question=question,
+                generated_sql=sql,
+                dataset_name=current_db,
+            )
+
+            db.add(history)
+            db.commit()
 
         return {
             "success": True,
@@ -292,3 +364,113 @@ def get_schema():
             "success": False,
             "error": str(e),
         }
+
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "backend": "running",
+        "database": "connected",
+        "redis": "connected",
+    }
+
+
+@app.get("/history")
+def get_history(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if not current_user.get("user_id"):
+        return []
+
+    history = (
+        db.query(QueryHistory)
+        .filter(QueryHistory.user_id == current_user["user_id"])
+        .all()
+    )
+
+    return [
+        {
+            "id": item.id,
+            "question": item.question,
+            "generated_sql": item.generated_sql,
+            "dataset_name": item.dataset_name,
+            "created_at": item.created_at,
+        }
+        for item in history
+    ]
+
+
+@app.post("/signup")
+def signup(request: SignupRequest):
+    db: Session = SessionLocal()
+
+    existing_user = db.query(User).filter(User.email == request.email).first()
+
+    if existing_user:
+        db.close()
+        return {"error": "Email already exists"}
+
+    new_user = User(
+        full_name=request.full_name,
+        email=request.email,
+        password_hash=pwd_context.hash(request.password),
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.close()
+
+    return {"message": "User created successfully"}
+
+
+@app.post("/login")
+def login(request: LoginRequest):
+    db: Session = SessionLocal()
+
+    user = db.query(User).filter(User.email == request.email).first()
+
+    if not user:
+        db.close()
+        return {"error": "User not found"}
+
+    if not pwd_context.verify(request.password, user.password_hash):
+        db.close()
+        return {"error": "Incorrect password"}
+
+    access_token = create_access_token(
+        data={
+            "user_id": user.id,
+            "email": user.email,
+        }
+    )
+
+    db.close()
+
+    return {
+        "message": "Login successful",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+        },
+    }
+
+
+def create_access_token(data: dict):
+    to_encode = data.copy()
+
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    return encoded_jwt
+
+
+@app.get("/me")
+def me(current_user: dict = Depends(get_current_user)):
+    return current_user

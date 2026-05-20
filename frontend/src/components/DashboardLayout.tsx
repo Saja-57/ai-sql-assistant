@@ -1,11 +1,31 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Database, FileCode2, History, Home, Info, Sparkles, Table2 } from "lucide-react";
+import {
+  Database,
+  FileCode2,
+  History,
+  Home,
+  Info,
+  LogOut,
+  Sparkles,
+  Table2,
+  UserRound,
+} from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const email = localStorage.getItem("email") || "User";
+
+  function handleLogout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("guest_mode");
+  localStorage.removeItem("email");
+
+  window.location.href = "/";
+}
 
   const items = [
     { to: "/dashboard", label: t.nav.query, icon: Sparkles },
@@ -17,7 +37,6 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex w-full">
-      {/* Sidebar */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col gap-2 p-4 border-e border-border/50 glass">
         <Link to="/" className="flex items-center gap-2 px-3 py-4">
           <div className="w-9 h-9 rounded-xl gradient-bg-primary flex items-center justify-center shadow-glow">
@@ -28,10 +47,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{t.appTagline}</div>
           </div>
         </Link>
+
         <nav className="flex flex-col gap-1 mt-2">
           {items.map((it) => {
             const active = path === it.to;
             const Icon = it.icon;
+
             return (
               <Link
                 key={it.to}
@@ -48,14 +69,36 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
-        <div className="mt-auto px-2">
+
+        <div className="mt-auto px-2 space-y-3">
+          <div className="rounded-2xl glass p-3 border border-border/50">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full gradient-bg-primary flex items-center justify-center shadow-glow">
+                <UserRound className="w-4 h-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold">Signed in as</div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {email}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-muted hover:bg-destructive/10 hover:text-destructive transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Logout
+            </button>
+          </div>
+
           <Link to="/" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
             <Home className="w-3.5 h-3.5" /> Welcome
           </Link>
         </div>
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
         <header className="h-16 flex items-center justify-between px-4 lg:px-8 border-b border-border/50 glass">
           <div className="lg:hidden flex items-center gap-2">
@@ -64,14 +107,34 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </div>
             <span className="font-bold text-sm">{t.appName}</span>
           </div>
-          <div className="hidden lg:block" />
-          <LanguageSwitcher />
+
+          <div className="hidden lg:flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full gradient-bg-primary flex items-center justify-center shadow-glow">
+              <UserRound className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Welcome back</div>
+              <div className="text-sm font-semibold">{email}</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <LanguageSwitcher />
+
+            <button
+              onClick={handleLogout}
+              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold glass hover:bg-destructive/10 hover:text-destructive transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              Logout
+            </button>
+          </div>
         </header>
 
-        {/* Mobile nav */}
         <nav className="lg:hidden flex overflow-x-auto gap-1 px-3 py-2 border-b border-border/50">
           {items.map((it) => {
             const active = path === it.to;
+
             return (
               <Link
                 key={it.to}
@@ -86,7 +149,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <main className="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="flex-1 p-4 lg:p-8 max-w-7xl w-full mx-auto">
+          {children}
+        </main>
       </div>
     </div>
   );

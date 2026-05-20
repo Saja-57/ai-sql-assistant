@@ -35,6 +35,21 @@ function QueryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const saved = sessionStorage.getItem("query-page-state");
+
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+
+        setQuestion(parsed.question || "");
+        setResult(parsed.result || null);
+        setError(parsed.error || null);
+        setUploadMsg(parsed.uploadMsg || null);
+      } catch {
+        sessionStorage.removeItem("query-page-state");
+      }
+    }
+
     const pre = sessionStorage.getItem("prefill-question");
 
     if (pre) {
@@ -46,6 +61,37 @@ function QueryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+  const saved = sessionStorage.getItem("query-page-state");
+
+  if (!saved) return;
+
+  try {
+    const parsed = JSON.parse(saved);
+
+    if (parsed.question) setQuestion(parsed.question);
+    if (parsed.result) setResult(parsed.result);
+    if (parsed.error) setError(parsed.error);
+    if (parsed.uploadMsg) setUploadMsg(parsed.uploadMsg);
+  } catch {
+    sessionStorage.removeItem("query-page-state");
+  }
+}, []);
+
+useEffect(() => {
+  if (!question && !result && !error && !uploadMsg) return;
+
+  sessionStorage.setItem(
+    "query-page-state",
+    JSON.stringify({
+      question,
+      result,
+      error,
+      uploadMsg,
+    })
+  );
+}, [question, result, error, uploadMsg]);
+
   const run = async (q?: string) => {
     const ques = (q ?? question).trim();
 
@@ -53,7 +99,6 @@ function QueryPage() {
 
     setLoading(true);
     setError(null);
-    setResult(null);
 
     const res = await generateSQL(ques);
 
@@ -72,6 +117,7 @@ function QueryPage() {
     }
 
     setResult(res);
+    setQuestion(ques);
     add({ question: ques, sql: res.sql, success: true });
   };
 
@@ -90,6 +136,14 @@ function QueryPage() {
     }
   };
 
+  const clearQueryState = () => {
+    setQuestion("");
+    setResult(null);
+    setError(null);
+    setUploadMsg(null);
+    sessionStorage.removeItem("query-page-state");
+  };
+
   return (
     <div className="space-y-6 animate-fade-in" dir={dir}>
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -97,9 +151,7 @@ function QueryPage() {
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
             {t.queryTitle}
           </h1>
-          <p className="text-muted-foreground mt-1.5">
-            {t.querySubtitle}
-          </p>
+          <p className="text-muted-foreground mt-1.5">{t.querySubtitle}</p>
         </div>
 
         <div>
@@ -167,19 +219,30 @@ function QueryPage() {
             ))}
           </div>
 
-          <button
-            onClick={() => run()}
-            disabled={loading || !question.trim()}
-            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4" />
+          <div className="flex items-center gap-2">
+            {(question || result || error || uploadMsg) && (
+              <button
+                onClick={clearQueryState}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl glass text-sm font-semibold hover:bg-accent/30 transition"
+              >
+                Clear
+              </button>
             )}
 
-            {loading ? t.generating : t.generateSQL}
-          </button>
+            <button
+              onClick={() => run()}
+              disabled={loading || !question.trim()}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+
+              {loading ? t.generating : t.generateSQL}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -188,9 +251,7 @@ function QueryPage() {
           <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
 
           <div>
-            <div className="font-semibold text-destructive">
-              {t.error}
-            </div>
+            <div className="font-semibold text-destructive">{t.error}</div>
 
             <div className="text-sm text-muted-foreground mt-0.5">
               {error}

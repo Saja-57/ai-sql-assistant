@@ -1,5 +1,4 @@
-const API_BASE_URL = "https://ai-sql-assistant-978r.onrender.com";
-
+const API_BASE_URL = "http://localhost:8000";
 
 export type SqlResponse = {
   success: boolean;
@@ -17,10 +16,13 @@ export async function generateSQL(
 
   try {
 
+    const token = localStorage.getItem("access_token");
+
     const response = await fetch(`${API_BASE_URL}/generate-sql`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
         question,
@@ -40,10 +42,11 @@ export async function generateSQL(
   }
 }
 
-
 export async function uploadCSV(file: File) {
 
   try {
+
+    const token = localStorage.getItem("access_token");
 
     const formData = new FormData();
 
@@ -51,6 +54,9 @@ export async function uploadCSV(file: File) {
 
     const response = await fetch(`${API_BASE_URL}/upload-csv`, {
       method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
       body: formData,
     });
 
@@ -65,17 +71,101 @@ export async function uploadCSV(file: File) {
   }
 }
 
-
 export async function getSchema() {
 
   try {
 
-    const response = await fetch(`${API_BASE_URL}/schema`);
+    const token = localStorage.getItem("access_token");
+
+    const response = await fetch(`${API_BASE_URL}/schema`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
     return await response.json();
 
   } catch (error) {
 
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+
+export async function loginUser(
+  email: string,
+  password: string
+) {
+
+  try {
+
+    const response = await fetch(`${API_BASE_URL}/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        password,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.access_token) {
+      localStorage.setItem("access_token", data.access_token);
+    }
+
+    return data;
+
+  } catch (error) {
+
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+export async function signupUser(
+  full_name: string,
+  email: string,
+  password: string
+) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        full_name,
+        email,
+        password,
+      }),
+    });
+
+    return await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+export async function getHistory() {
+  try {
+    const token = localStorage.getItem("access_token");
+
+    const response = await fetch(`${API_BASE_URL}/history`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return await response.json();
+  } catch (error) {
     return {
       success: false,
       error: String(error),
