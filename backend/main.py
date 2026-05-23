@@ -5,7 +5,7 @@ from openai import OpenAI
 client = OpenAI()
 
 # Database path
-DB_PATH = "data/Chinook_Sqlite.sqlite"
+DB_PATH = ""
 
 
 def generate_sql_with_ai(question):
@@ -43,10 +43,15 @@ def generate_sql_with_ai(question):
     - Return ONLY SQL
     - Use SQLite syntax
     - ONLY SELECT queries allowed
+    - Do not guess meanings from similar column names.
+- - If the user question is completely unrelated to the dataset,
+  return:
+  SELECT 'DATASET_MISMATCH' AS message;
+- Only use columns that clearly match the user intent.
     - Never use DELETE, DROP, UPDATE, INSERT, ALTER
-    - If unclear return:
-      SELECT 'Question unclear' AS message;
-
+- If the question does not match the uploaded dataset schema,
+  return exactly:
+  SELECT 'DATASET_MISMATCH' AS message;
     User question:
     {question}
     """

@@ -12,11 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as AnalyticsRouteImport } from './routes/analytics'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardIndexRouteImport } from './routes/dashboard.index'
 import { Route as DashboardSchemaRouteImport } from './routes/dashboard.schema'
 import { Route as DashboardHistoryRouteImport } from './routes/dashboard.history'
 import { Route as DashboardExamplesRouteImport } from './routes/dashboard.examples'
+import { Route as DashboardAnalyticsRouteImport } from './routes/dashboard.analytics'
 import { Route as DashboardAboutRouteImport } from './routes/dashboard.about'
 
 const SignupRoute = SignupRouteImport.update({
@@ -32,6 +34,11 @@ const LoginRoute = LoginRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AnalyticsRoute = AnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +66,11 @@ const DashboardExamplesRoute = DashboardExamplesRouteImport.update({
   path: '/examples',
   getParentRoute: () => DashboardRoute,
 } as any)
+const DashboardAnalyticsRoute = DashboardAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => DashboardRoute,
+} as any)
 const DashboardAboutRoute = DashboardAboutRouteImport.update({
   id: '/about',
   path: '/about',
@@ -67,10 +79,12 @@ const DashboardAboutRoute = DashboardAboutRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/dashboard/about': typeof DashboardAboutRoute
+  '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/examples': typeof DashboardExamplesRoute
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/schema': typeof DashboardSchemaRoute
@@ -78,9 +92,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/dashboard/about': typeof DashboardAboutRoute
+  '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/examples': typeof DashboardExamplesRoute
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/schema': typeof DashboardSchemaRoute
@@ -89,10 +105,12 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/analytics': typeof AnalyticsRoute
   '/dashboard': typeof DashboardRouteWithChildren
   '/login': typeof LoginRoute
   '/signup': typeof SignupRoute
   '/dashboard/about': typeof DashboardAboutRoute
+  '/dashboard/analytics': typeof DashboardAnalyticsRoute
   '/dashboard/examples': typeof DashboardExamplesRoute
   '/dashboard/history': typeof DashboardHistoryRoute
   '/dashboard/schema': typeof DashboardSchemaRoute
@@ -102,10 +120,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/analytics'
     | '/dashboard'
     | '/login'
     | '/signup'
     | '/dashboard/about'
+    | '/dashboard/analytics'
     | '/dashboard/examples'
     | '/dashboard/history'
     | '/dashboard/schema'
@@ -113,9 +133,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/analytics'
     | '/login'
     | '/signup'
     | '/dashboard/about'
+    | '/dashboard/analytics'
     | '/dashboard/examples'
     | '/dashboard/history'
     | '/dashboard/schema'
@@ -123,10 +145,12 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/analytics'
     | '/dashboard'
     | '/login'
     | '/signup'
     | '/dashboard/about'
+    | '/dashboard/analytics'
     | '/dashboard/examples'
     | '/dashboard/history'
     | '/dashboard/schema'
@@ -135,6 +159,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AnalyticsRoute: typeof AnalyticsRoute
   DashboardRoute: typeof DashboardRouteWithChildren
   LoginRoute: typeof LoginRoute
   SignupRoute: typeof SignupRoute
@@ -161,6 +186,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/analytics': {
+      id: '/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AnalyticsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -198,6 +230,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardExamplesRouteImport
       parentRoute: typeof DashboardRoute
     }
+    '/dashboard/analytics': {
+      id: '/dashboard/analytics'
+      path: '/analytics'
+      fullPath: '/dashboard/analytics'
+      preLoaderRoute: typeof DashboardAnalyticsRouteImport
+      parentRoute: typeof DashboardRoute
+    }
     '/dashboard/about': {
       id: '/dashboard/about'
       path: '/about'
@@ -210,6 +249,7 @@ declare module '@tanstack/react-router' {
 
 interface DashboardRouteChildren {
   DashboardAboutRoute: typeof DashboardAboutRoute
+  DashboardAnalyticsRoute: typeof DashboardAnalyticsRoute
   DashboardExamplesRoute: typeof DashboardExamplesRoute
   DashboardHistoryRoute: typeof DashboardHistoryRoute
   DashboardSchemaRoute: typeof DashboardSchemaRoute
@@ -218,6 +258,7 @@ interface DashboardRouteChildren {
 
 const DashboardRouteChildren: DashboardRouteChildren = {
   DashboardAboutRoute: DashboardAboutRoute,
+  DashboardAnalyticsRoute: DashboardAnalyticsRoute,
   DashboardExamplesRoute: DashboardExamplesRoute,
   DashboardHistoryRoute: DashboardHistoryRoute,
   DashboardSchemaRoute: DashboardSchemaRoute,
@@ -230,6 +271,7 @@ const DashboardRouteWithChildren = DashboardRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AnalyticsRoute: AnalyticsRoute,
   DashboardRoute: DashboardRouteWithChildren,
   LoginRoute: LoginRoute,
   SignupRoute: SignupRoute,

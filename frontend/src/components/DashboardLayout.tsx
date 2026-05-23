@@ -1,5 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  BarChart3,
   Database,
   FileCode2,
   History,
@@ -19,16 +20,17 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const email = localStorage.getItem("email") || "User";
 
   function handleLogout() {
-  localStorage.removeItem("token");
-  localStorage.removeItem("access_token");
-  localStorage.removeItem("guest_mode");
-  localStorage.removeItem("email");
+    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("guest_mode");
+    localStorage.removeItem("email");
 
-  window.location.href = "/";
-}
+    window.location.href = "/";
+  }
 
   const items = [
     { to: "/dashboard", label: t.nav.query, icon: Sparkles },
+    { to: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
     { to: "/dashboard/schema", label: t.nav.schema, icon: Database },
     { to: "/dashboard/examples", label: t.nav.examples, icon: Table2 },
     { to: "/dashboard/history", label: t.nav.history, icon: History },
@@ -42,9 +44,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <div className="w-9 h-9 rounded-xl gradient-bg-primary flex items-center justify-center shadow-glow">
             <FileCode2 className="w-5 h-5 text-white" />
           </div>
+
           <div>
             <div className="font-bold text-sm leading-tight">{t.appName}</div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">{t.appTagline}</div>
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              {t.appTagline}
+            </div>
           </div>
         </Link>
 
@@ -76,6 +81,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
               <div className="w-9 h-9 rounded-full gradient-bg-primary flex items-center justify-center shadow-glow">
                 <UserRound className="w-4 h-4 text-white" />
               </div>
+
               <div className="min-w-0">
                 <div className="text-xs font-semibold">Signed in as</div>
                 <div className="text-[11px] text-muted-foreground truncate">
@@ -93,7 +99,10 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <Link to="/" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground">
+          <Link
+            to="/"
+            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
+          >
             <Home className="w-3.5 h-3.5" /> Welcome
           </Link>
         </div>
@@ -105,6 +114,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div className="w-8 h-8 rounded-lg gradient-bg-primary flex items-center justify-center">
               <FileCode2 className="w-4 h-4 text-white" />
             </div>
+
             <span className="font-bold text-sm">{t.appName}</span>
           </div>
 
@@ -112,6 +122,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <div className="w-9 h-9 rounded-full gradient-bg-primary flex items-center justify-center shadow-glow">
               <UserRound className="w-4 h-4 text-white" />
             </div>
+
             <div>
               <div className="text-xs text-muted-foreground">Welcome back</div>
               <div className="text-sm font-semibold">{email}</div>
@@ -140,7 +151,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
                 key={it.to}
                 to={it.to}
                 className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                  active ? "gradient-bg-primary text-white" : "bg-muted text-muted-foreground"
+                  active
+                    ? "gradient-bg-primary text-white"
+                    : "bg-muted text-muted-foreground"
                 }`}
               >
                 {it.label}

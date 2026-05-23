@@ -1,23 +1,30 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Loader2, Sparkles, Upload } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  Loader2,
+  Sparkles,
+  Upload,
+  Database,
+} from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useHistory } from "@/lib/history";
-import { generateSQL, uploadCSV, type SqlResponse } from "@/lib/api";
+import {
+  generateSQL,
+  uploadCSV,
+  getSchema,
+  getDatasetInsights,
+  type SqlResponse,
+  type DatasetInsights,
+} from "@/lib/api";
 import { SQLBlock } from "@/components/SQLBlock";
 import { ResultsTable } from "@/components/ResultsTable";
+import { AutoChart } from "@/components/AutoChart";
 
 export const Route = createFileRoute("/dashboard/")({
   component: QueryPage,
 });
-
-const EXAMPLES = [
-  "show all artists",
-  "show albums",
-  "show customers",
-  "מי הלקוחות ששילמו הכי הרבה?",
-  "مين هني العملاء الي بدفعوا اكثر اشي؟",
-];
 
 const FORBIDDEN = /\b(DELETE|DROP|UPDATE|INSERT|ALTER|CREATE|TRUNCATE)\b/i;
 
@@ -32,12 +39,74 @@ function QueryPage() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const [datasets, setDatasets] = useState<string[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState("");
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [insights, setInsights] = useState<DatasetInsights | null>(null);
+  const [generatedQuestion, setGeneratedQuestion] = useState("");
+
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const token =
+    localStorage.getItem("token") || localStorage.getItem("access_token");
+
+  const isGuest = localStorage.getItem("guest_mode") === "true" && !token;
+
+  const hasDataset = datasets.length > 0 && selectedDataset.trim() !== "";
+
+  const loadDatasets = async () => {
+    try {
+      const res = await getSchema();
+
+      if (res.success && res.schema) {
+        const names = Object.keys(res.schema);
+
+        setDatasets(names);
+
+        if (names.length === 0) {
+          setSelectedDataset("");
+          setInsights(null);
+          return;
+        }
+
+        if (!selectedDataset || !names.includes(selectedDataset)) {
+          setSelectedDataset(names[0]);
+        }
+
+        const insightsRes = await getDatasetInsights();
+
+        if (insightsRes.success) {
+          setInsights(insightsRes);
+
+          if (insightsRes.suggested_questions) {
+            setSuggestions(insightsRes.suggested_questions);
+          }
+        }
+      } else {
+        setDatasets([]);
+        setSelectedDataset("");
+        setInsights(null);
+      }
+    } catch {
+      setDatasets([]);
+      setSelectedDataset("");
+      setInsights(null);
+    }
+  };
+
   useEffect(() => {
+    if (!isGuest && token) {
+      loadDatasets();
+    } else {
+      setDatasets([]);
+      setSelectedDataset("");
+      setInsights(null);
+      setSuggestions([]);
+    }
+
     const saved = sessionStorage.getItem("query-page-state");
 
-    if (saved) {
+    if (saved && !isGuest) {
       try {
         const parsed = JSON.parse(saved);
 
@@ -45,6 +114,8 @@ function QueryPage() {
         setResult(parsed.result || null);
         setError(parsed.error || null);
         setUploadMsg(parsed.uploadMsg || null);
+        setSelectedDataset(parsed.selectedDataset || "");
+        setGeneratedQuestion(parsed.generatedQuestion || "");
       } catch {
         sessionStorage.removeItem("query-page-state");
       }
@@ -62,45 +133,47 @@ function QueryPage() {
   }, []);
 
   useEffect(() => {
-  const saved = sessionStorage.getItem("query-page-state");
-
-  if (!saved) return;
-
-  try {
-    const parsed = JSON.parse(saved);
-
-    if (parsed.question) setQuestion(parsed.question);
-    if (parsed.result) setResult(parsed.result);
-    if (parsed.error) setError(parsed.error);
-    if (parsed.uploadMsg) setUploadMsg(parsed.uploadMsg);
-  } catch {
-    sessionStorage.removeItem("query-page-state");
-  }
-}, []);
-
-useEffect(() => {
-  if (!question && !result && !error && !uploadMsg) return;
-
-  sessionStorage.setItem(
-    "query-page-state",
-    JSON.stringify({
-      question,
-      result,
-      error,
-      uploadMsg,
-    })
-  );
-}, [question, result, error, uploadMsg]);
+    if (!isGuest) {
+      sessionStorage.setItem(
+        "query-page-state",
+        JSON.stringify({
+          question,
+          result,
+          error,
+          uploadMsg,
+          selectedDataset,
+          generatedQuestion,
+        })
+      );
+    }
+  }, [
+    question,
+    result,
+    error,
+    uploadMsg,
+    selectedDataset,
+    generatedQuestion,
+    isGuest,
+  ]);
 
   const run = async (q?: string) => {
     const ques = (q ?? question).trim();
 
     if (!ques) return;
 
+    if (!hasDataset) {
+      setResult(null);
+      setError("Please upload a CSV file before generating SQL.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setResult(null);
 
-    const res = await generateSQL(ques);
+    const finalQuestion = `Use table ${selectedDataset}. ${ques}`;
+
+    const res = await generateSQL(finalQuestion);
 
     setLoading(false);
 
@@ -111,26 +184,56 @@ useEffect(() => {
     }
 
     if (!res.success) {
-      setError(res.error || t.error);
+      setError(
+        res.error ||
+          `This question does not match ${selectedDataset}. Try asking about the uploaded dataset.`
+      );
       add({ question: ques, sql: res.sql, success: false });
       return;
     }
 
     setResult(res);
     setQuestion(ques);
+    setGeneratedQuestion(ques);
+
     add({ question: ques, sql: res.sql, success: true });
   };
 
   const handleUpload = async (file: File) => {
     setUploading(true);
     setUploadMsg(null);
+    setError(null);
+    setResult(null);
+    setGeneratedQuestion("");
 
     const r = await uploadCSV(file);
 
     setUploading(false);
 
     if (r.success) {
-      setUploadMsg(t.uploaded);
+      setUploadMsg(`${t.uploaded} (${r.table_name})`);
+
+
+
+      if (r.table_name) {
+        setSelectedDataset(r.table_name);
+      }
+
+      if (r.suggested_questions) {
+        setSuggestions(r.suggested_questions);
+      }
+
+      if (r.table_name) {
+     sessionStorage.setItem("selected_dataset", r.table_name);
+      }
+
+      await loadDatasets();
+
+      const insightsRes = await getDatasetInsights();
+
+      if (insightsRes.success) {
+        setInsights(insightsRes);
+      }
     } else {
       setUploadMsg(r.error || r.message || t.error);
     }
@@ -140,7 +243,8 @@ useEffect(() => {
     setQuestion("");
     setResult(null);
     setError(null);
-    setUploadMsg(null);
+    setGeneratedQuestion("");
+
     sessionStorage.removeItem("query-page-state");
   };
 
@@ -183,7 +287,39 @@ useEffect(() => {
         </div>
       </header>
 
-      <div className="glass rounded-3xl p-5 md:p-6 shadow-card">
+      <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Database className="w-4 h-4" />
+            Dataset
+          </div>
+
+          <div className="relative w-full md:w-80">
+            <select
+              value={selectedDataset}
+              onChange={(e) => {
+                setSelectedDataset(e.target.value);
+                setResult(null);
+                setError(null);
+                setGeneratedQuestion("");
+              }}
+              className="w-full appearance-none rounded-xl glass px-4 py-2.5 pr-10 text-sm outline-none"
+            >
+              {datasets.length === 0 && (
+                <option value="">No dataset uploaded yet</option>
+              )}
+
+              {datasets.map((dataset) => (
+                <option key={dataset} value={dataset}>
+                  {dataset}
+                </option>
+              ))}
+            </select>
+
+            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+          </div>
+        </div>
+
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl gradient-bg-primary flex items-center justify-center shadow-glow shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
@@ -191,8 +327,15 @@ useEffect(() => {
 
           <textarea
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
-            placeholder={t.placeholder}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              setGeneratedQuestion("");
+            }}
+            placeholder={
+              hasDataset
+                ? `Ask a question about ${selectedDataset}`
+                : "Upload a CSV first, then ask questions about your data"
+            }
             rows={2}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -203,13 +346,14 @@ useEffect(() => {
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap gap-2">
-            {EXAMPLES.map((example) => (
+            {suggestions.map((example) => (
               <button
                 key={example}
                 onClick={() => {
                   setQuestion(example);
+                  setGeneratedQuestion("");
                   run(example);
                 }}
                 className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
@@ -220,7 +364,7 @@ useEffect(() => {
           </div>
 
           <div className="flex items-center gap-2">
-            {(question || result || error || uploadMsg) && (
+            {(question || result || error) && (
               <button
                 onClick={clearQueryState}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl glass text-sm font-semibold hover:bg-accent/30 transition"
@@ -231,8 +375,13 @@ useEffect(() => {
 
             <button
               onClick={() => run()}
-              disabled={loading || !question.trim()}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={
+  loading ||
+  !question.trim() ||
+  !hasDataset ||
+  (result !== null && generatedQuestion === question.trim())
+}
+             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -240,7 +389,11 @@ useEffect(() => {
                 <Sparkles className="w-4 h-4" />
               )}
 
-              {loading ? t.generating : t.generateSQL}
+              {loading
+                ? t.generating
+                : result && generatedQuestion === question.trim()
+                ? "Generated"
+                : t.generateSQL}
             </button>
           </div>
         </div>
@@ -253,9 +406,25 @@ useEffect(() => {
           <div>
             <div className="font-semibold text-destructive">{t.error}</div>
 
-            <div className="text-sm text-muted-foreground mt-0.5">
-              {error}
-            </div>
+            <div className="text-sm text-muted-foreground mt-0.5">{error}</div>
+
+            {hasDataset && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {suggestions.map((example) => (
+                  <button
+                    key={example}
+                    onClick={() => {
+                      setQuestion(example);
+                      setGeneratedQuestion("");
+                      run(example);
+                    }}
+                    className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
+                  >
+                    Try: {example}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -292,13 +461,105 @@ useEffect(() => {
           )}
 
           {result.columns && result.rows && (
-            <section>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                {t.results}
-              </h2>
+            <section className="space-y-6">
+              <div>
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  {t.results}
+                </h2>
 
-              <ResultsTable columns={result.columns} rows={result.rows} />
+                <ResultsTable columns={result.columns} rows={result.rows} />
+              </div>
+
+              
             </section>
+          )}
+        </div>
+      )}
+
+      {insights?.success && (
+        <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              AI Dataset Insights
+            </h2>
+
+            <p className="text-sm text-muted-foreground mt-1">
+              Automatic analysis of your uploaded dataset
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-muted/40 p-4">
+              <div className="text-sm text-muted-foreground">Rows</div>
+              <div className="text-2xl font-bold">{insights.rows_count}</div>
+            </div>
+
+            <div className="rounded-2xl bg-muted/40 p-4">
+              <div className="text-sm text-muted-foreground">Columns</div>
+              <div className="text-2xl font-bold">
+                {insights.columns_count}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-muted/40 p-4">
+              <div className="text-sm text-muted-foreground">Table</div>
+              <div className="text-lg font-semibold">{insights.table_name}</div>
+            </div>
+          </div>
+
+          {insights.numeric_summary &&
+            Object.keys(insights.numeric_summary).length > 0 && (
+              <div>
+                <h3 className="font-semibold mb-2">Numeric Summary</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(insights.numeric_summary)
+                    .slice(0, 4)
+                    .map(([column, stats]) => (
+                      <div
+                        key={column}
+                        className="rounded-2xl bg-muted/40 p-4"
+                      >
+                        <div className="font-semibold mb-2">{column}</div>
+
+                        <div className="text-sm text-muted-foreground">
+                          Avg: {stats.average.toFixed(2)}
+                        </div>
+
+                        <div className="text-sm text-muted-foreground">
+                          Min: {stats.min}
+                        </div>
+
+                        <div className="text-sm text-muted-foreground">
+                          Max: {stats.max}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+          {insights.suggested_questions && (
+            <div>
+              <h3 className="font-semibold mb-2">AI Suggested Questions</h3>
+
+              <div className="flex flex-wrap gap-2">
+                {insights.suggested_questions.map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => {
+                      setQuestion(q);
+                      setGeneratedQuestion("");
+                      run(q);
+                    }}
+                    className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}
@@ -306,7 +567,9 @@ useEffect(() => {
       {!result && !loading && !error && (
         <div className="glass rounded-3xl p-12 text-center text-muted-foreground">
           <Sparkles className="w-8 h-8 mx-auto mb-3 text-primary/60" />
-          {t.noResults}
+          {hasDataset
+            ? "Ask a question to generate SQL and view results."
+            : "Upload a CSV file to start analyzing your data."}
         </div>
       )}
     </div>

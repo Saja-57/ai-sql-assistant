@@ -1,5 +1,16 @@
 const API_BASE_URL = "http://localhost:8000";
 
+export type UploadResponse = {
+  success: boolean;
+  message?: string;
+  table_name?: string;
+  database?: string;
+  columns?: string[];
+  rows_count?: number;
+  suggested_questions?: string[];
+  error?: string;
+};
+
 export type SqlResponse = {
   success: boolean;
   question?: string;
@@ -42,8 +53,7 @@ export async function generateSQL(
   }
 }
 
-export async function uploadCSV(file: File) {
-
+export async function uploadCSV(file: File): Promise<UploadResponse> {
   try {
 
     const token = localStorage.getItem("access_token");
@@ -164,6 +174,39 @@ export async function getHistory() {
       },
     });
 
+    return await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+
+export type DatasetInsights = {
+  success: boolean;
+  table_name?: string;
+  rows_count?: number;
+  columns_count?: number;
+  columns?: string[];
+  column_types?: Record<string, string>;
+  missing_values?: Record<string, number>;
+  numeric_summary?: Record<
+    string,
+    {
+      average: number;
+      min: number;
+      max: number;
+    }
+  >;
+  top_values?: Record<string, Record<string, number>>;
+  suggested_questions?: string[];
+  error?: string;
+};
+
+export async function getDatasetInsights(): Promise<DatasetInsights> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/dataset-insights`);
     return await response.json();
   } catch (error) {
     return {
