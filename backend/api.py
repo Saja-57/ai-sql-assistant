@@ -116,6 +116,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
+        "https://ai-sql-assistant-orpin.vercel.app",
         "https://ai-sql-assistant-git-main-saja-abdalla-s-projects.vercel.app",
         "https://ai-sql-assistant-b6z9gg0la-saja-abdalla-s-projects.vercel.app",
     ],
@@ -123,7 +124,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
