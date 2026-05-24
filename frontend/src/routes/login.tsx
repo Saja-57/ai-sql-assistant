@@ -13,6 +13,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
 
   async function handleLogin() {
+    console.log("LOGIN BUTTON CLICKED");
     const result = await loginUser(email, password);
 
     console.log(result);
