@@ -1,49 +1,66 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
-export type HistoryItem = {
+type HistoryItem = {
   id: string;
   question: string;
   sql?: string;
   success: boolean;
-  timestamp: number;
+  timestamp: string;
 };
 
-type Ctx = {
-  items: HistoryItem[];
-  add: (i: Omit<HistoryItem, "id" | "timestamp">) => void;
-  clear: () => void;
-};
+const STORAGE_KEY = "query-history";
 
-const HistoryContext = createContext<Ctx | null>(null);
-
-export function HistoryProvider({ children }: { children: ReactNode }) {
+export function useHistory() {
   const [items, setItems] = useState<HistoryItem[]>([]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     try {
-      const raw = localStorage.getItem("query-history");
-      if (raw) setItems(JSON.parse(raw));
-    } catch {}
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        setItems(JSON.parse(raw));
+      }
+    } catch {
+      setItems([]);
+    }
   }, []);
 
-  const add = (i: Omit<HistoryItem, "id" | "timestamp">) => {
-    setItems((prev) => {
-      const next = [{ ...i, id: crypto.randomUUID(), timestamp: Date.now() }, ...prev].slice(0, 50);
-      try { localStorage.setItem("query-history", JSON.stringify(next)); } catch {}
-      return next;
-    });
+  const save = (next: HistoryItem[]) => {
+    setItems(next);
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      } catch {}
+    }
+  };
+
+  const add = (item: {
+    question: string;
+    sql?: string;
+    success: boolean;
+  }) => {
+    const nextItem: HistoryItem = {
+      id: crypto.randomUUID(),
+      question: item.question,
+      sql: item.sql,
+      success: item.success,
+      timestamp: new Date().toISOString(),
+    };
+
+    save([nextItem, ...items]);
   };
 
   const clear = () => {
-    setItems([]);
-    try { localStorage.removeItem("query-history"); } catch {}
+    save([]);
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch {}
+    }
   };
 
-  return <HistoryContext.Provider value={{ items, add, clear }}>{children}</HistoryContext.Provider>;
-}
-
-export function useHistory() {
-  const ctx = useContext(HistoryContext);
-  if (!ctx) throw new Error("useHistory must be used within HistoryProvider");
-  return ctx;
+  return { items, add, clear };
 }
