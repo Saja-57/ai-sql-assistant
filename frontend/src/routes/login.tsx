@@ -12,21 +12,22 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  async function handleLogin() {
-    console.log("LOGIN BUTTON CLICKED");
-    const result = await loginUser(email, password);
+ async function handleLogin() {
+  console.log("LOGIN BUTTON CLICKED");
 
-    console.log(result);
+  const result = await loginUser(email, password);
 
-    if (result.access_token) {
-      localStorage.setItem("access_token", result.access_token);
-      localStorage.setItem("email", email);
+  console.log("LOGIN RESULT:", result);
 
-      window.location.href = "/dashboard";
-    } else {
-      alert("Login failed");
-    }
+  if (result.access_token) {
+    localStorage.setItem("access_token", result.access_token);
+    localStorage.setItem("email", email);
+
+    window.location.href = "/dashboard";
+  } else {
+    alert(result.error || result.detail || "Login failed");
   }
+}
 
   return (
     <div
