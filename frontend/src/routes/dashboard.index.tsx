@@ -45,7 +45,22 @@ function QueryPage() {
   const [generatedQuestion, setGeneratedQuestion] = useState("");
 
   const [token, setToken] = useState<string | null>(null);
-  const [isGuest, setIsGuest] = useState(false);
+const [isGuest, setIsGuest] = useState(false);
+
+useEffect(() => {
+  if (typeof window === "undefined") return;
+
+  const savedToken =
+    localStorage.getItem("token") ||
+    localStorage.getItem("access_token");
+
+  setToken(savedToken);
+
+  setIsGuest(
+    localStorage.getItem("guest_mode") === "true" &&
+    !savedToken
+  );
+}, []);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
