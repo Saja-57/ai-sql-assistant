@@ -1,5 +1,4 @@
-const API_BASE_URL = "http://localhost:8000";
-
+const API_BASE_URL = "https://ai-sql-assistant-978r.onrender.com";
 export type UploadResponse = {
   success: boolean;
   message?: string;
