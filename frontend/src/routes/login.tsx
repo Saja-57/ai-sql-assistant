@@ -21,7 +21,7 @@ function LoginPage() {
       localStorage.setItem("access_token", result.access_token);
       localStorage.setItem("email", email);
 
-      navigate({ to: "/dashboard" });
+      window.location.href = "/dashboard";
     } else {
       alert("Login failed");
     }
