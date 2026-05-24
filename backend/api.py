@@ -114,13 +114,10 @@ class QuestionRequest(BaseModel):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:8080",
-        "http://localhost:8081",
-        "http://127.0.0.1:8080",
         "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8082",
-        "https://ai-sql-assistant.sajaabdalla1313.workers.dev",
+        "http://localhost:3000",
+        "https://ai-sql-assistant-git-main-saja-abdalla-s-projects.vercel.app",
+        "https://ai-sql-assistant-b6z9gg0la-saja-abdalla-s-projects.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
