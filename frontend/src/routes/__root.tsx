@@ -10,7 +10,7 @@ import {
 
 import appCss from "../styles.css?url";
 import { I18nProvider } from "@/lib/i18n";
-import { HistoryProvider } from "@/lib/history";
+
 
 function NotFoundComponent() {
   return (
@@ -116,9 +116,9 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <I18nProvider>
-        <HistoryProvider>
+       
           <Outlet />
-        </HistoryProvider>
+        
       </I18nProvider>
     </QueryClientProvider>
   );
