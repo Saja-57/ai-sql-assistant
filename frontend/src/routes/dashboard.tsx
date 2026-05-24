@@ -3,7 +3,13 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 
 export const Route = createFileRoute("/dashboard")({
   beforeLoad: () => {
-    const token = localStorage.getItem("token");
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const token =
+      localStorage.getItem("token") || localStorage.getItem("access_token");
+
     const guestMode = localStorage.getItem("guest_mode");
 
     if (!token && guestMode !== "true") {
