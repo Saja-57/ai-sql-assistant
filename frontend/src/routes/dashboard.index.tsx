@@ -48,10 +48,14 @@ function QueryPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const token =
-    localStorage.getItem("token") || localStorage.getItem("access_token");
+  typeof window !== "undefined"
+    ? localStorage.getItem("token") || localStorage.getItem("access_token")
+    : null;
 
-  const isGuest = localStorage.getItem("guest_mode") === "true" && !token;
-
+const isGuest =
+  typeof window !== "undefined"
+    ? localStorage.getItem("guest_mode") === "true" && !token
+    : false;
   const hasDataset = datasets.length > 0 && selectedDataset.trim() !== "";
 
   const loadDatasets = async () => {
