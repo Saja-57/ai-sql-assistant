@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
   BarChart3,
   Database,
@@ -17,15 +18,25 @@ import { LanguageSwitcher } from "./LanguageSwitcher";
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { t } = useI18n();
   const path = useRouterState({ select: (s) => s.location.pathname });
-  const email = localStorage.getItem("email") || "User";
+
+  const [email, setEmail] = useState("User");
+
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("email");
+    if (savedEmail) {
+      setEmail(savedEmail);
+    }
+  }, []);
 
   function handleLogout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("access_token");
-    localStorage.removeItem("guest_mode");
-    localStorage.removeItem("email");
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("token");
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("guest_mode");
+      localStorage.removeItem("email");
 
-    window.location.href = "/";
+      window.location.href = "/";
+    }
   }
 
   const items = [

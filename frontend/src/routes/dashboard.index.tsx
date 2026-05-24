@@ -20,7 +20,6 @@ import {
 } from "@/lib/api";
 import { SQLBlock } from "@/components/SQLBlock";
 import { ResultsTable } from "@/components/ResultsTable";
-import { AutoChart } from "@/components/AutoChart";
 
 export const Route = createFileRoute("/dashboard/")({
   component: QueryPage,
@@ -45,17 +44,11 @@ function QueryPage() {
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
   const [generatedQuestion, setGeneratedQuestion] = useState("");
 
+  const [token, setToken] = useState<string | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
+
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const token =
-  typeof window !== "undefined"
-    ? localStorage.getItem("token") || localStorage.getItem("access_token")
-    : null;
-
-const isGuest =
-  typeof window !== "undefined"
-    ? localStorage.getItem("guest_mode") === "true" && !token
-    : false;
   const hasDataset = datasets.length > 0 && selectedDataset.trim() !== "";
 
   const loadDatasets = async () => {
@@ -73,9 +66,12 @@ const isGuest =
           return;
         }
 
-        if (!selectedDataset || !names.includes(selectedDataset)) {
-          setSelectedDataset(names[0]);
-        }
+        setSelectedDataset((current) => {
+          if (!current || !names.includes(current)) {
+            return names[0];
+          }
+          return current;
+        });
 
         const insightsRes = await getDatasetInsights();
 
@@ -99,6 +95,18 @@ const isGuest =
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const savedToken =
+      localStorage.getItem("token") || localStorage.getItem("access_token");
+
+    setToken(savedToken);
+    setIsGuest(localStorage.getItem("guest_mode") === "true" && !savedToken);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
     if (!isGuest && token) {
       loadDatasets();
     } else {
@@ -134,9 +142,11 @@ const isGuest =
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [token, isGuest]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     if (!isGuest) {
       sessionStorage.setItem(
         "query-page-state",
@@ -176,7 +186,6 @@ const isGuest =
     setResult(null);
 
     const finalQuestion = `Use table ${selectedDataset}. ${ques}`;
-
     const res = await generateSQL(finalQuestion);
 
     setLoading(false);
@@ -217,18 +226,16 @@ const isGuest =
     if (r.success) {
       setUploadMsg(`${t.uploaded} (${r.table_name})`);
 
-
-
       if (r.table_name) {
         setSelectedDataset(r.table_name);
+
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("selected_dataset", r.table_name);
+        }
       }
 
       if (r.suggested_questions) {
         setSuggestions(r.suggested_questions);
-      }
-
-      if (r.table_name) {
-     sessionStorage.setItem("selected_dataset", r.table_name);
       }
 
       await loadDatasets();
@@ -249,7 +256,9 @@ const isGuest =
     setError(null);
     setGeneratedQuestion("");
 
-    sessionStorage.removeItem("query-page-state");
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("query-page-state");
+    }
   };
 
   return (
@@ -380,12 +389,12 @@ const isGuest =
             <button
               onClick={() => run()}
               disabled={
-  loading ||
-  !question.trim() ||
-  !hasDataset ||
-  (result !== null && generatedQuestion === question.trim())
-}
-             className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-60 disabled:cursor-not-allowed"
+                loading ||
+                !question.trim() ||
+                !hasDataset ||
+                (result !== null && generatedQuestion === question.trim())
+              }
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -409,26 +418,7 @@ const isGuest =
 
           <div>
             <div className="font-semibold text-destructive">{t.error}</div>
-
             <div className="text-sm text-muted-foreground mt-0.5">{error}</div>
-
-            {hasDataset && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {suggestions.map((example) => (
-                  <button
-                    key={example}
-                    onClick={() => {
-                      setQuestion(example);
-                      setGeneratedQuestion("");
-                      run(example);
-                    }}
-                    className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
-                  >
-                    Try: {example}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -447,7 +437,6 @@ const isGuest =
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               {t.generatedSQL}
             </h2>
-
             <SQLBlock sql={result.sql} />
           </section>
 
@@ -457,7 +446,6 @@ const isGuest =
                 <Sparkles className="w-4 h-4 text-primary" />
                 {t.explanation}
               </h3>
-
               <p className="text-sm text-muted-foreground leading-relaxed">
                 {result.explanation}
               </p>
@@ -465,16 +453,11 @@ const isGuest =
           )}
 
           {result.columns && result.rows && (
-            <section className="space-y-6">
-              <div>
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                  {t.results}
-                </h2>
-
-                <ResultsTable columns={result.columns} rows={result.rows} />
-              </div>
-
-              
+            <section>
+              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                {t.results}
+              </h2>
+              <ResultsTable columns={result.columns} rows={result.rows} />
             </section>
           )}
         </div>
@@ -482,16 +465,10 @@ const isGuest =
 
       {insights?.success && (
         <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
-          <div>
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-primary" />
-              AI Dataset Insights
-            </h2>
-
-            <p className="text-sm text-muted-foreground mt-1">
-              Automatic analysis of your uploaded dataset
-            </p>
-          </div>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            AI Dataset Insights
+          </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-2xl bg-muted/40 p-4">
@@ -501,9 +478,7 @@ const isGuest =
 
             <div className="rounded-2xl bg-muted/40 p-4">
               <div className="text-sm text-muted-foreground">Columns</div>
-              <div className="text-2xl font-bold">
-                {insights.columns_count}
-              </div>
+              <div className="text-2xl font-bold">{insights.columns_count}</div>
             </div>
 
             <div className="rounded-2xl bg-muted/40 p-4">
@@ -511,60 +486,6 @@ const isGuest =
               <div className="text-lg font-semibold">{insights.table_name}</div>
             </div>
           </div>
-
-          {insights.numeric_summary &&
-            Object.keys(insights.numeric_summary).length > 0 && (
-              <div>
-                <h3 className="font-semibold mb-2">Numeric Summary</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {Object.entries(insights.numeric_summary)
-                    .slice(0, 4)
-                    .map(([column, stats]) => (
-                      <div
-                        key={column}
-                        className="rounded-2xl bg-muted/40 p-4"
-                      >
-                        <div className="font-semibold mb-2">{column}</div>
-
-                        <div className="text-sm text-muted-foreground">
-                          Avg: {stats.average.toFixed(2)}
-                        </div>
-
-                        <div className="text-sm text-muted-foreground">
-                          Min: {stats.min}
-                        </div>
-
-                        <div className="text-sm text-muted-foreground">
-                          Max: {stats.max}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )}
-
-          {insights.suggested_questions && (
-            <div>
-              <h3 className="font-semibold mb-2">AI Suggested Questions</h3>
-
-              <div className="flex flex-wrap gap-2">
-                {insights.suggested_questions.map((q) => (
-                  <button
-                    key={q}
-                    onClick={() => {
-                      setQuestion(q);
-                      setGeneratedQuestion("");
-                      run(q);
-                    }}
-                    className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
