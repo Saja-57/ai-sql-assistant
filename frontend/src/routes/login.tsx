@@ -1,7 +1,7 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { loginUser } from "../lib/api";
-
+import { loginUser } from "@/lib/api";
+import { Eye, EyeOff } from "lucide-react";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -13,137 +13,90 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
+  async function handleLogin() {
+    if (!email || !password) {
+      alert("Please fill in all fields");
+      return;
+    }
 
- async function handleLogin() {
-  setLoading(true);
+    try {
+      setIsLoading(true);
 
-  const result = await loginUser(email, password);
+      const result = await loginUser(email, password);
 
-  console.log(result);
+      console.log("login result:", result);
 
-  if (result.access_token) {
-    localStorage.setItem("access_token", result.access_token);
-    localStorage.setItem("email", email);
-    localStorage.removeItem("guest_mode");
+      if (result.access_token) {
+        localStorage.setItem("access_token", result.access_token);
+        localStorage.setItem("email", email);
+        localStorage.removeItem("guest_mode");
 
-    navigate({ to: "/dashboard" });
-  } else {
-    alert(result.error || "Login failed");
+        navigate({ to: "/dashboard" });
+      } else {
+        alert(result.error || "Login failed");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Login failed");
+    } finally {
+      setIsLoading(false);
+    }
   }
 
-  setLoading(false);
-}
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        background:
-          "linear-gradient(to bottom right, #f5f3ff, #eef7ff)",
-      }}
-    >
-      <div
-        style={{
-          width: "400px",
-          background: "white",
-          padding: "40px",
-          borderRadius: "20px",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.1)",
-          display: "flex",
-          flexDirection: "column",
-          gap: "20px",
-        }}
-      >
-        <h1
-          style={{
-            textAlign: "center",
-            fontSize: "36px",
-            marginBottom: "10px",
-            color: "#6d28d9",
-          }}
-        >
-          Login
-        </h1>
+    <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="glass rounded-3xl p-8 w-full max-w-md shadow-elegant">
+        <h1 className="text-3xl font-bold mb-2">Welcome back</h1>
 
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={{
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #ddd",
-            fontSize: "16px",
-          }}
-        />
+        <p className="text-muted-foreground mb-8">
+          Login to continue using your AI SQL Assistant.
+        </p>
 
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={{
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #ddd",
-            fontSize: "16px",
-          }}
-        />
+        <div className="space-y-4">
+          <input
+            className="w-full px-4 py-3 rounded-xl border bg-background"
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
-        <button
-  onClick={handleLogin}
-  disabled={loading}
-  style={{
-    padding: "14px",
-    borderRadius: "12px",
-    border: "none",
-    background: loading ? "#a855f7" : "#7c3aed",
-    color: "white",
-    fontSize: "18px",
-    cursor: loading ? "not-allowed" : "pointer",
-    fontWeight: "bold",
-    opacity: loading ? 0.7 : 1,
-    transform: loading ? "scale(0.97)" : "scale(1)",
-    transition: "all 0.2s ease",
-  }}
->
-  {loading ? "Logging in..." : "Login"}
-</button>
+          <div className="relative">
+            <input
+              className="w-full px-4 py-3 pr-12 rounded-xl border bg-background"
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
 
-        <button
-          onClick={() => navigate({ to: "/signup" })}
-          style={{
-            padding: "14px",
-            borderRadius: "12px",
-            border: "1px solid #7c3aed",
-            background: "white",
-            color: "#7c3aed",
-            fontSize: "16px",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
-        >
-          Create Account
-        </button>
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
 
-        <button
-          onClick={() => navigate({ to: "/" })}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#666",
-            cursor: "pointer",
-            marginTop: "10px",
-          }}
-        >
-          Back to Home
-        </button>
+          <button
+            onClick={handleLogin}
+            disabled={isLoading}
+            className="w-full px-4 py-3 rounded-xl gradient-bg-primary text-white font-semibold shadow-elegant disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isLoading ? "Logging in..." : "Login"}
+          </button>
+        </div>
+
+        <p className="text-sm text-muted-foreground mt-6 text-center">
+          Don’t have an account?{" "}
+          <Link to="/signup" className="text-primary font-semibold">
+            Sign up
+          </Link>
+        </p>
       </div>
     </div>
   );

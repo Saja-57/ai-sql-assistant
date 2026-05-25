@@ -62,7 +62,12 @@ function HistoryPage() {
                     </span>
                   )}
                   <span className="text-[11px] text-muted-foreground">
-                    {new Date(it.timestamp).toLocaleString()}
+                    {
+  it.timestamp &&
+  !isNaN(new Date(it.timestamp).getTime())
+    ? new Date(it.timestamp).toLocaleString()
+    : "No date"
+}
                   </span>
                 </div>
                 <div className="font-medium text-sm truncate">{it.question}</div>

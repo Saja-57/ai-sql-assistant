@@ -144,12 +144,12 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
             <LanguageSwitcher />
 
             <button
-              onClick={handleLogout}
-              className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold glass hover:bg-destructive/10 hover:text-destructive transition"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              Logout
-            </button>
+  onClick={handleLogout}
+  className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold glass hover:bg-destructive/10 hover:text-destructive transition whitespace-nowrap"
+>
+  <LogOut className="w-3.5 h-3.5" />
+  <span className="hidden sm:inline">Logout</span>
+</button>
           </div>
         </header>
 

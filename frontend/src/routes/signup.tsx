@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { signupUser } from "@/lib/api";
+import { Eye, EyeOff } from "lucide-react";
 
 export const Route = createFileRoute("/signup")({
   component: SignupPage,
@@ -13,23 +14,40 @@ function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
   async function handleSignup() {
-    const result = await signupUser(fullName, email, password);
+    if (!fullName || !email || !password) {
+      alert("Please fill in all fields");
+      return;
+    }
 
-    console.log("signup result:", result);
+    try {
+      setIsLoading(true);
 
-    if (result.access_token) {
-      localStorage.setItem("access_token", result.access_token);
-      localStorage.setItem("email", result.user?.email || email);
-      localStorage.removeItem("guest_mode");
+      const result = await signupUser(fullName, email, password);
 
-      navigate({ to: "/dashboard" });
-    } else {
-      alert(
-        typeof result.detail === "string"
-          ? result.detail
-          : result.error || "Signup failed"
-      );
+      console.log("signup result:", result);
+
+      if (result.access_token) {
+        localStorage.setItem("access_token", result.access_token);
+        localStorage.setItem("email", result.user?.email || email);
+        localStorage.removeItem("guest_mode");
+
+        navigate({ to: "/dashboard" });
+      } else {
+        alert(
+          typeof result.detail === "string"
+            ? result.detail
+            : result.error || "Signup failed"
+        );
+      }
+    } catch (error) {
+      console.error("Signup error:", error);
+      alert("Signup failed");
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -59,19 +77,30 @@ function SignupPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
 
-          <input
-            className="w-full px-4 py-3 rounded-xl border bg-background"
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              className="w-full px-4 py-3 pr-12 rounded-xl border bg-background"
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowPassword((prev) => !prev)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
 
           <button
             onClick={handleSignup}
-            className="w-full px-4 py-3 rounded-xl gradient-bg-primary text-white font-semibold shadow-elegant"
+            disabled={isLoading}
+            className="w-full px-4 py-3 rounded-xl gradient-bg-primary text-white font-semibold shadow-elegant disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            Sign up
+            {isLoading ? "Creating account..." : "Sign up"}
           </button>
         </div>
 
