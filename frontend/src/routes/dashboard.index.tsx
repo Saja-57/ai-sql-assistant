@@ -45,22 +45,7 @@ function QueryPage() {
   const [generatedQuestion, setGeneratedQuestion] = useState("");
 
   const [token, setToken] = useState<string | null>(null);
-const [isGuest, setIsGuest] = useState(false);
-
-useEffect(() => {
-  if (typeof window === "undefined") return;
-
-  const savedToken =
-    localStorage.getItem("token") ||
-    localStorage.getItem("access_token");
-
-  setToken(savedToken);
-
-  setIsGuest(
-    localStorage.getItem("guest_mode") === "true" &&
-    !savedToken
-  );
-}, []);
+  const [isGuest, setIsGuest] = useState(false);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -78,15 +63,20 @@ useEffect(() => {
         if (names.length === 0) {
           setSelectedDataset("");
           setInsights(null);
+          setSuggestions([]);
           return;
         }
 
-        setSelectedDataset((current) => {
-          if (!current || !names.includes(current)) {
-            return names[0];
-          }
-          return current;
-        });
+        const savedSelected =
+          sessionStorage.getItem("selected_dataset") || selectedDataset;
+
+        const nextSelected =
+          savedSelected && names.includes(savedSelected)
+            ? savedSelected
+            : names[0];
+
+        setSelectedDataset(nextSelected);
+        sessionStorage.setItem("selected_dataset", nextSelected);
 
         const insightsRes = await getDatasetInsights();
 
@@ -101,11 +91,13 @@ useEffect(() => {
         setDatasets([]);
         setSelectedDataset("");
         setInsights(null);
+        setSuggestions([]);
       }
     } catch {
       setDatasets([]);
       setSelectedDataset("");
       setInsights(null);
+      setSuggestions([]);
     }
   };
 
@@ -117,23 +109,10 @@ useEffect(() => {
 
     setToken(savedToken);
     setIsGuest(localStorage.getItem("guest_mode") === "true" && !savedToken);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (!isGuest && token) {
-      loadDatasets();
-    } else {
-      setDatasets([]);
-      setSelectedDataset("");
-      setInsights(null);
-      setSuggestions([]);
-    }
 
     const saved = sessionStorage.getItem("query-page-state");
 
-    if (saved && !isGuest) {
+    if (saved) {
       try {
         const parsed = JSON.parse(saved);
 
@@ -153,28 +132,35 @@ useEffect(() => {
     if (pre) {
       setQuestion(pre);
       sessionStorage.removeItem("prefill-question");
-      run(pre);
     }
+  }, []);
 
+  useEffect(() => {
+    if (!isGuest && token) {
+      loadDatasets();
+    } else {
+      setDatasets([]);
+      setSelectedDataset("");
+      setInsights(null);
+      setSuggestions([]);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isGuest]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    if (!isGuest) {
-      sessionStorage.setItem(
-        "query-page-state",
-        JSON.stringify({
-          question,
-          result,
-          error,
-          uploadMsg,
-          selectedDataset,
-          generatedQuestion,
-        })
-      );
-    }
+    sessionStorage.setItem(
+      "query-page-state",
+      JSON.stringify({
+        question,
+        result,
+        error,
+        uploadMsg,
+        selectedDataset,
+        generatedQuestion,
+      })
+    );
   }, [
     question,
     result,
@@ -182,7 +168,6 @@ useEffect(() => {
     uploadMsg,
     selectedDataset,
     generatedQuestion,
-    isGuest,
   ]);
 
   const run = async (q?: string) => {
@@ -243,10 +228,7 @@ useEffect(() => {
 
       if (r.table_name) {
         setSelectedDataset(r.table_name);
-
-        if (typeof window !== "undefined") {
-          sessionStorage.setItem("selected_dataset", r.table_name);
-        }
+        sessionStorage.setItem("selected_dataset", r.table_name);
       }
 
       if (r.suggested_questions) {
@@ -327,6 +309,7 @@ useEffect(() => {
               value={selectedDataset}
               onChange={(e) => {
                 setSelectedDataset(e.target.value);
+                sessionStorage.setItem("selected_dataset", e.target.value);
                 setResult(null);
                 setError(null);
                 setGeneratedQuestion("");

@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { loginUser } from "../lib/api";
 
+
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
@@ -12,21 +13,27 @@ function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  const [loading, setLoading] = useState(false);
+
+
  async function handleLogin() {
-  console.log("LOGIN BUTTON CLICKED");
+  setLoading(true);
 
   const result = await loginUser(email, password);
 
-  console.log("LOGIN RESULT:", result);
+  console.log(result);
 
   if (result.access_token) {
     localStorage.setItem("access_token", result.access_token);
     localStorage.setItem("email", email);
+    localStorage.removeItem("guest_mode");
 
-    window.location.href = "/dashboard";
+    navigate({ to: "/dashboard" });
   } else {
-    alert(result.error || result.detail || "Login failed");
+    alert(result.error || "Login failed");
   }
+
+  setLoading(false);
 }
 
   return (
@@ -90,20 +97,24 @@ function LoginPage() {
         />
 
         <button
-          onClick={handleLogin}
-          style={{
-            padding: "14px",
-            borderRadius: "12px",
-            border: "none",
-            background: "#7c3aed",
-            color: "white",
-            fontSize: "18px",
-            cursor: "pointer",
-            fontWeight: "bold",
-          }}
-        >
-          Login
-        </button>
+  onClick={handleLogin}
+  disabled={loading}
+  style={{
+    padding: "14px",
+    borderRadius: "12px",
+    border: "none",
+    background: loading ? "#a855f7" : "#7c3aed",
+    color: "white",
+    fontSize: "18px",
+    cursor: loading ? "not-allowed" : "pointer",
+    fontWeight: "bold",
+    opacity: loading ? 0.7 : 1,
+    transform: loading ? "scale(0.97)" : "scale(1)",
+    transition: "all 0.2s ease",
+  }}
+>
+  {loading ? "Logging in..." : "Login"}
+</button>
 
         <button
           onClick={() => navigate({ to: "/signup" })}

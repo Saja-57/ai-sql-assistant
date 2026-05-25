@@ -18,14 +18,12 @@ function SignupPage() {
 
     console.log("signup result:", result);
 
-    if (
-        result.id ||
-         result.email ||
-         result.success ||
-         result.message === "User created successfully"
-     ) {
-      alert("Signup successful! Please login.");
-      navigate({ to: "/login" });
+    if (result.access_token) {
+      localStorage.setItem("access_token", result.access_token);
+      localStorage.setItem("email", result.user?.email || email);
+      localStorage.removeItem("guest_mode");
+
+      navigate({ to: "/dashboard" });
     } else {
       alert(
         typeof result.detail === "string"
@@ -45,7 +43,6 @@ function SignupPage() {
         </p>
 
         <div className="space-y-4">
-
           <input
             className="w-full px-4 py-3 rounded-xl border bg-background"
             type="text"
