@@ -12,9 +12,9 @@ import { useI18n } from "@/lib/i18n";
 import { useHistory } from "@/lib/history";
 import {
   generateSQL,
-  uploadCSV,
-  getSchema,
-  getDatasetInsights,
+uploadCSV,
+getDatasets,
+getDatasetInsights,
   type SqlResponse,
   type DatasetInsights,
 } from "@/lib/api";
@@ -38,7 +38,7 @@ function QueryPage() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const [datasets, setDatasets] = useState<string[]>([]);
+  const [datasets, setDatasets] = useState<any[]>([]);
   const [selectedDataset, setSelectedDataset] = useState("");
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
@@ -52,54 +52,53 @@ function QueryPage() {
   const hasDataset = datasets.length > 0 && selectedDataset.trim() !== "";
 
   const loadDatasets = async () => {
-    try {
-      const res = await getSchema();
+  try {
+    const data = await getDatasets();
 
-      if (res.success && res.schema) {
-        const names = Object.keys(res.schema);
+    setDatasets(data);
 
-        setDatasets(names);
-
-        if (names.length === 0) {
-          setSelectedDataset("");
-          setInsights(null);
-          setSuggestions([]);
-          return;
-        }
-
-        const savedSelected =
-          sessionStorage.getItem("selected_dataset") || selectedDataset;
-
-        const nextSelected =
-          savedSelected && names.includes(savedSelected)
-            ? savedSelected
-            : names[0];
-
-        setSelectedDataset(nextSelected);
-        sessionStorage.setItem("selected_dataset", nextSelected);
-
-        const insightsRes = await getDatasetInsights();
-
-        if (insightsRes.success) {
-          setInsights(insightsRes);
-
-          if (insightsRes.suggested_questions) {
-            setSuggestions(insightsRes.suggested_questions);
-          }
-        }
-      } else {
-        setDatasets([]);
-        setSelectedDataset("");
-        setInsights(null);
-        setSuggestions([]);
-      }
-    } catch {
-      setDatasets([]);
+    if (data.length === 0) {
       setSelectedDataset("");
       setInsights(null);
       setSuggestions([]);
+      return;
     }
-  };
+
+    const savedSelected =
+      sessionStorage.getItem("selected_dataset") || selectedDataset;
+
+    const datasetNames = data.map((d: any) => d.table_name);
+
+    const nextSelected =
+      savedSelected && datasetNames.includes(savedSelected)
+        ? savedSelected
+        : data[0].table_name;
+
+    setSelectedDataset(nextSelected);
+
+    sessionStorage.setItem(
+      "selected_dataset",
+      nextSelected
+    );
+
+    const insightsRes = await getDatasetInsights();
+
+    if (insightsRes.success) {
+      setInsights(insightsRes);
+
+      if (insightsRes.suggested_questions) {
+        setSuggestions(insightsRes.suggested_questions);
+      }
+    }
+
+  } catch {
+
+    setDatasets([]);
+    setSelectedDataset("");
+    setInsights(null);
+    setSuggestions([]);
+  }
+};
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -321,10 +320,13 @@ function QueryPage() {
               )}
 
               {datasets.map((dataset) => (
-                <option key={dataset} value={dataset}>
-                  {dataset}
-                </option>
-              ))}
+  <option
+    key={dataset.id}
+    value={dataset.table_name}
+  >
+    {dataset.file_name || dataset.table_name}
+  </option>
+))}
             </select>
 
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />

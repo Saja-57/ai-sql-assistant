@@ -214,3 +214,14 @@ export async function getDatasetInsights(): Promise<DatasetInsights> {
     };
   }
 }
+export async function getDatasets() {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE_URL}/datasets`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return response.json();
+}
