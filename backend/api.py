@@ -10,9 +10,10 @@ import shutil
 import re
 import logging
 import time
+import json
 
 from database import engine, get_db, SessionLocal
-from models import Base, QueryHistory, User
+from models import Base, QueryHistory, User, Dataset
 from sqlalchemy.orm import Session
 
 from passlib.context import CryptContext
@@ -44,7 +45,6 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger("ai_sql_assistant")
-
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -95,6 +95,16 @@ security = HTTPBearer(auto_error=False)
 
 Base.metadata.create_all(bind=engine)
 
+DATA_DIR = "data"
+os.makedirs(DATA_DIR, exist_ok=True)
+
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY")
+)
+
+# =========================
+# Models
+# =========================
 
 class SignupRequest(BaseModel):
     full_name: str
@@ -109,7 +119,12 @@ class LoginRequest(BaseModel):
 
 class QuestionRequest(BaseModel):
     question: str
+    dataset_id: int
 
+
+# =========================
+# CORS
+# =========================
 
 app.add_middleware(
     CORSMiddleware,
@@ -124,21 +139,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
-
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
-
-UPLOADED_DB = os.path.join(
-    DATA_DIR,
-    "uploaded_data.db"
-)
-
-# No default demo database
-current_db = None
-
 
 # =========================
 # Helpers
@@ -197,16 +197,19 @@ def get_current_user(
         return {"guest": True}
 
 
-def get_database_schema_text() -> str:
+def get_database_path(user_id: int):
 
-    global current_db
+    return os.path.join(
+        DATA_DIR,
+        f"user_{user_id}.db"
+    )
 
-    if current_db is None:
-        return ""
+
+def get_database_schema_text(database_path: str) -> str:
 
     try:
 
-        conn = sqlite3.connect(current_db)
+        conn = sqlite3.connect(database_path)
 
         cursor = conn.cursor()
 
@@ -247,9 +250,10 @@ def get_database_schema_text() -> str:
         return ""
 
 
-def generate_sql_with_ai(question: str) -> str:
-
-    schema = get_database_schema_text()
+def generate_sql_with_ai(
+    question: str,
+    schema: str
+) -> str:
 
     if not schema:
         return (
@@ -334,23 +338,14 @@ def validate_sql(sql: str) -> bool:
     return True
 
 
-def execute_sql(sql: str):
-
-    global current_db
-
-    if current_db is None:
-
-        return {
-            "success": False,
-            "error": (
-                "No dataset uploaded yet. "
-                "Please upload a CSV first."
-            ),
-        }
+def execute_sql(
+    database_path: str,
+    sql: str
+):
 
     try:
 
-        conn = sqlite3.connect(current_db)
+        conn = sqlite3.connect(database_path)
 
         cursor = conn.cursor()
 
@@ -453,7 +448,6 @@ def generate_suggested_questions(
 
     return suggestions[:6]
 
-
 # =========================
 # Routes
 # =========================
@@ -463,155 +457,61 @@ def root():
 
     return {
         "message": "AI Text-to-SQL API Running",
-        "database": current_db,
-        "has_dataset": current_db is not None,
     }
 
 
-@app.post("/generate-sql")
-def generate_sql(
-    request: QuestionRequest,
+@app.get("/datasets")
+def get_datasets(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+
+    if current_user.get("guest"):
+
+        return []
+
+    datasets = (
+        db.query(Dataset)
+        .filter(
+            Dataset.user_id == current_user["user_id"]
+        )
+        .order_by(Dataset.created_at.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": item.id,
+            "table_name": item.table_name,
+            "file_name": item.original_file_name,
+            "rows_count": item.rows_count,
+            "created_at": item.created_at,
+        }
+        for item in datasets
+    ]
+
+
+@app.post("/upload-csv")
+async def upload_csv(
+    file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
 
     try:
 
-        global current_db
-
-        question = request.question
-
-        if current_db is None:
+        if current_user.get("guest"):
 
             return {
                 "success": False,
-                "question": question,
-                "sql": None,
-                "error": (
-                    "No dataset uploaded yet. "
-                    "Please upload a CSV first."
-                ),
+                "error": "Please login first"
             }
-
-        logger.info(
-            f"AI QUERY START | question={question}"
-        )
-
-        sql = generate_sql_with_ai(question)
-
-        if "DATASET_MISMATCH" in sql:
-
-            return {
-                "success": False,
-                "question": question,
-                "sql": None,
-                "error": (
-                    "This question does not match "
-                    "the uploaded dataset. "
-                    "Please ask questions related "
-                    "to your uploaded CSV data."
-                ),
-            }
-
-        logger.info(
-            f"SQL GENERATED | sql={sql}"
-        )
-
-        if not validate_sql(sql):
-
-            logger.warning(
-                f"UNSAFE SQL BLOCKED | sql={sql}"
-            )
-
-            return {
-                "success": False,
-                "question": question,
-                "sql": sql,
-                "error": (
-                    "Only safe SELECT queries "
-                    "are allowed"
-                ),
-            }
-
-        result = execute_sql(sql)
-
-        if not result["success"]:
-
-            logger.error(
-                f"QUERY FAILED | sql={sql} | "
-                f"error={result['error']}"
-            )
-
-            return {
-                "success": False,
-                "question": question,
-                "sql": sql,
-                "error": result["error"],
-            }
-
-        if current_user.get("user_id"):
-
-            history = QueryHistory(
-                user_id=current_user["user_id"],
-                question=question,
-                generated_sql=sql,
-                dataset_name=current_db,
-            )
-
-            db.add(history)
-
-            db.commit()
-
-            logger.info(
-                f"HISTORY SAVED | "
-                f"user_id={current_user['user_id']} | "
-                f"question={question}"
-            )
-
-        logger.info(
-            f"QUERY SUCCESS | "
-            f"rows={len(result['rows'])} | "
-            f"columns={result['columns']}"
-        )
-
-        return {
-            "success": True,
-            "question": question,
-            "sql": sql,
-            "columns": result["columns"],
-            "rows": result["rows"],
-        }
-
-    except Exception as e:
-
-        logger.exception(
-            f"GENERATE SQL ERROR | error={str(e)}"
-        )
-
-        return {
-            "success": False,
-            "error": str(e),
-        }
-
-
-@app.post("/upload-csv")
-async def upload_csv(
-    file: UploadFile = File(...)
-):
-
-    global current_db
-
-    try:
 
         logger.info(
             f"UPLOAD START | filename={file.filename}"
         )
 
         if not file.filename.lower().endswith(".csv"):
-
-            logger.warning(
-                f"UPLOAD REJECTED | invalid_file={file.filename}"
-            )
 
             return {
                 "success": False,
@@ -628,21 +528,17 @@ async def upload_csv(
 
         df = pd.read_csv(temp_csv_path)
 
-        logger.info(
-            f"CSV READ SUCCESS | "
-            f"filename={file.filename} | "
-            f"rows={len(df)} | "
-            f"columns={list(df.columns)}"
+        safe_name = clean_table_name(file.filename)
+
+        table_name = (
+            f"user_{current_user['user_id']}_{safe_name}"
         )
 
-        table_name = clean_table_name(
-            file.filename
+        database_path = get_database_path(
+            current_user["user_id"]
         )
 
-        if os.path.exists(UPLOADED_DB):
-            os.remove(UPLOADED_DB)
-
-        conn = sqlite3.connect(UPLOADED_DB)
+        conn = sqlite3.connect(database_path)
 
         df.to_sql(
             table_name,
@@ -650,17 +546,21 @@ async def upload_csv(
             if_exists="replace",
             index=False,
         )
+        
 
         conn.close()
 
-        current_db = UPLOADED_DB
-
-        logger.info(
-            f"UPLOAD SUCCESS | "
-            f"table_name={table_name} | "
-            f"database={current_db} | "
-            f"rows={len(df)}"
+        dataset = Dataset(
+            user_id=current_user["user_id"],
+            table_name=table_name,
+            original_file_name=file.filename,
+            rows_count=len(df),
+            columns_json=json.dumps(list(df.columns)),
         )
+
+        db.add(dataset)
+        db.commit()
+        db.refresh(dataset)
 
         suggestions = generate_suggested_questions(
             table_name,
@@ -669,9 +569,9 @@ async def upload_csv(
 
         return {
             "success": True,
-            "message": "CSV uploaded successfully",
+            "dataset_id": dataset.id,
             "table_name": table_name,
-            "database": current_db,
+            "database": database_path,
             "columns": list(df.columns),
             "rows_count": len(df),
             "suggested_questions": suggestions,
@@ -680,8 +580,7 @@ async def upload_csv(
     except Exception as e:
 
         logger.exception(
-            f"UPLOAD ERROR | filename={file.filename} | "
-            f"error={str(e)}"
+            f"UPLOAD ERROR | error={str(e)}"
         )
 
         return {
@@ -690,409 +589,90 @@ async def upload_csv(
         }
 
 
-@app.get("/dataset-insights")
-def dataset_insights():
-
-    global current_db
-
-    try:
-
-        if current_db is None:
-
-            return {
-                "success": False,
-                "error": "No dataset uploaded yet"
-            }
-
-        conn = sqlite3.connect(current_db)
-
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table';"
-        )
-
-        table_name = cursor.fetchone()[0]
-
-        df = pd.read_sql_query(
-            f'SELECT * FROM "{table_name}"',
-            conn
-        )
-
-        conn.close()
-
-        rows_count = len(df)
-
-        columns_count = len(df.columns)
-
-        missing_values = (
-            df.isnull()
-            .sum()
-            .to_dict()
-        )
-
-        column_types = {
-            col: str(dtype)
-            for col, dtype in df.dtypes.items()
-        }
-
-        numeric_summary = {}
-
-        numeric_df = df.select_dtypes(
-            include="number"
-        )
-
-        for column in numeric_df.columns:
-
-            numeric_summary[column] = {
-                "average": float(
-                    numeric_df[column].mean()
-                ),
-                "min": float(
-                    numeric_df[column].min()
-                ),
-                "max": float(
-                    numeric_df[column].max()
-                ),
-            }
-
-        top_values = {}
-
-        categorical_df = df.select_dtypes(
-            include="object"
-        )
-
-        for column in categorical_df.columns[:5]:
-
-            values = (
-                categorical_df[column]
-                .value_counts()
-                .head(3)
-                .to_dict()
-            )
-
-            top_values[column] = values
-
-        suggestions = generate_suggested_questions(
-            table_name,
-            list(df.columns)
-        )
-
-        return {
-            "success": True,
-            "table_name": table_name,
-            "rows_count": rows_count,
-            "columns_count": columns_count,
-            "columns": list(df.columns),
-            "column_types": column_types,
-            "missing_values": missing_values,
-            "numeric_summary": numeric_summary,
-            "top_values": top_values,
-            "suggested_questions": suggestions,
-        }
-
-    except Exception as e:
-
-        logger.exception(
-            f"DATASET INSIGHTS ERROR | error={str(e)}"
-        )
-
-        return {
-            "success": False,
-            "error": str(e),
-        }
-
-
-@app.get("/schema")
-def get_schema():
-
-    global current_db
-
-    try:
-
-        logger.info(
-            f"SCHEMA REQUEST | database={current_db}"
-        )
-
-        if current_db is None:
-
-            return {
-                "success": True,
-                "database": None,
-                "has_dataset": False,
-                "schema": {},
-                "message": "No dataset uploaded yet",
-            }
-
-        conn = sqlite3.connect(current_db)
-
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table';"
-        )
-
-        tables = cursor.fetchall()
-
-        schema = {}
-
-        for table in tables:
-
-            table_name = table[0]
-
-            cursor.execute(
-                f'PRAGMA table_info("{table_name}")'
-            )
-
-            columns = cursor.fetchall()
-
-            schema[table_name] = [
-                {
-                    "column_name": col[1],
-                    "data_type": col[2],
-                }
-                for col in columns
-            ]
-
-        conn.close()
-
-        logger.info(
-            f"SCHEMA SUCCESS | tables={list(schema.keys())}"
-        )
-
-        return {
-            "success": True,
-            "database": current_db,
-            "has_dataset": True,
-            "schema": schema,
-        }
-
-    except Exception as e:
-
-        logger.exception(
-            f"SCHEMA ERROR | error={str(e)}"
-        )
-
-        return {
-            "success": False,
-            "error": str(e),
-        }
-
-
-@app.get("/health")
-def health_check():
-
-    logger.info("HEALTH CHECK")
-
-    return {
-        "status": "healthy",
-        "backend": "running",
-        "database": (
-            "waiting_for_upload"
-            if current_db is None
-            else "connected"
-        ),
-        "redis": "connected",
-    }
-
-
-@app.get("/history")
-def get_history(
+@app.post("/generate-sql")
+def generate_sql(
+    request: QuestionRequest,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
 
-    if not current_user.get("user_id"):
-
-        logger.info(
-            "HISTORY REQUEST | guest user"
-        )
-
-        return []
-
-    history = (
-        db.query(QueryHistory)
-        .filter(
-            QueryHistory.user_id
-            == current_user["user_id"]
-        )
-        .all()
-    )
-
-    logger.info(
-        f"HISTORY REQUEST | "
-        f"user_id={current_user['user_id']} | "
-        f"count={len(history)}"
-    )
-
-    return [
-        {
-            "id": item.id,
-            "question": item.question,
-            "generated_sql": item.generated_sql,
-            "dataset_name": item.dataset_name,
-            "created_at": item.created_at,
-        }
-        for item in history
-    ]
-
-
-@app.post("/signup")
-def signup(request: SignupRequest):
-
-    db: Session = SessionLocal()
-
     try:
 
-        logger.info(
-            f"SIGNUP START | email={request.email}"
-        )
-
-        existing_user = (
-            db.query(User)
-            .filter(User.email == request.email)
+        dataset = (
+            db.query(Dataset)
+            .filter(
+                Dataset.id == request.dataset_id,
+                Dataset.user_id == current_user["user_id"]
+            )
             .first()
         )
 
-        if existing_user:
-
-            logger.warning(
-                f"SIGNUP FAILED | "
-                f"email already exists | "
-                f"email={request.email}"
-            )
+        if not dataset:
 
             return {
-                "error": "Email already exists"
+                "success": False,
+                "error": "Dataset not found"
             }
 
-        new_user = User(
-            full_name=request.full_name,
-            email=request.email,
-            password_hash=pwd_context.hash(
-                request.password
-            ),
+        database_path = get_database_path(
+            current_user["user_id"]
         )
 
-        db.add(new_user)
+        schema = get_database_schema_text(
+            database_path
+        )
 
+        sql = generate_sql_with_ai(
+            request.question,
+            schema
+        )
+
+        if not validate_sql(sql):
+
+            return {
+                "success": False,
+                "error": "Unsafe SQL blocked"
+            }
+
+        result = execute_sql(
+            database_path,
+            sql
+        )
+
+        if not result["success"]:
+
+            return {
+                "success": False,
+                "error": result["error"],
+            }
+
+        history = QueryHistory(
+            user_id=current_user["user_id"],
+            question=request.question,
+            generated_sql=sql,
+            dataset_name=dataset.table_name,
+        )
+
+        db.add(history)
         db.commit()
 
-        logger.info(
-            f"SIGNUP SUCCESS | email={request.email}"
-        )
-
         return {
-            "message": "User created successfully"
+            "success": True,
+            "question": request.question,
+            "sql": sql,
+            "columns": result["columns"],
+            "rows": result["rows"],
         }
 
     except Exception as e:
 
         logger.exception(
-            f"SIGNUP ERROR | "
-            f"email={request.email} | "
-            f"error={str(e)}"
+            f"GENERATE SQL ERROR | error={str(e)}"
         )
 
         return {
-            "error": str(e)
+            "success": False,
+            "error": str(e),
         }
-
-    finally:
-        db.close()
-
-
-@app.post("/login")
-def login(request: LoginRequest):
-
-    db: Session = SessionLocal()
-
-    try:
-
-        logger.info(
-            f"LOGIN START | email={request.email}"
-        )
-
-        user = (
-            db.query(User)
-            .filter(User.email == request.email)
-            .first()
-        )
-
-        if not user:
-
-            logger.warning(
-                f"LOGIN FAILED | "
-                f"user not found | "
-                f"email={request.email}"
-            )
-
-            return {
-                "error": "User not found"
-            }
-
-        if not pwd_context.verify(
-            request.password,
-            user.password_hash
-        ):
-
-            logger.warning(
-                f"LOGIN FAILED | "
-                f"incorrect password | "
-                f"email={request.email}"
-            )
-
-            return {
-                "error": "Incorrect password"
-            }
-
-        access_token = create_access_token(
-            data={
-                "user_id": user.id,
-                "email": user.email,
-            }
-        )
-
-        logger.info(
-            f"LOGIN SUCCESS | "
-            f"user_id={user.id} | "
-            f"email={user.email}"
-        )
-
-        return {
-            "message": "Login successful",
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "full_name": user.full_name,
-                "email": user.email,
-            },
-        }
-
-    except Exception as e:
-
-        logger.exception(
-            f"LOGIN ERROR | "
-            f"email={request.email} | "
-            f"error={str(e)}"
-        )
-
-        return {
-            "error": str(e)
-        }
-
-    finally:
-        db.close()
-
-
-@app.get("/me")
-def me(
-    current_user: dict = Depends(get_current_user)
-):
-
-    logger.info(
-        f"ME REQUEST | user={current_user}"
-    )
-
-    return current_user
+    
+    

@@ -23,3 +23,13 @@ class User(Base):
       email = Column(String(255), unique=True, index=True, nullable=False)
       password_hash = Column(Text, nullable=False)
       created_at = Column(DateTime, default=datetime.utcnow)
+
+class Dataset(Base):
+    __tablename__ = "datasets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    name = Column(String, nullable=False)
+    file_path = Column(String, nullable=False)
+    table_name = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
