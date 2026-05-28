@@ -90,6 +90,15 @@ security = HTTPBearer(auto_error=False)
 
 Base.metadata.create_all(bind=engine)
 
+# ✅ Migration אוטומטי — מוסיף עמודות חסרות
+from sqlalchemy import text
+with engine.connect() as conn:
+    conn.execute(text("""
+        ALTER TABLE query_history 
+        ADD COLUMN IF NOT EXISTS dataset_id INTEGER REFERENCES datasets(id);
+    """))
+    conn.commit()
+
 DATA_DIR = "data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -643,9 +652,9 @@ async def upload_csv(
         db.refresh(dataset)
 
         suggestions = generate_suggested_questions(
-            table_name,
-            list(df.columns),
-        )
+    file.filename,
+    list(df.columns),
+)
 
         return {
             "success": True,
@@ -902,9 +911,9 @@ def dataset_insights(
             }
 
         suggested_questions = generate_suggested_questions(
-            dataset.table_name,
-            columns,
-        )
+    dataset.original_file_name,
+    columns,
+)
 
         return {
             "success": True,
