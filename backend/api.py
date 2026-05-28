@@ -12,7 +12,7 @@ import logging
 import time
 import json
 
-from database import engine, get_db, SessionLocal
+from database import engine, get_db
 from models import Base, QueryHistory, User, Dataset
 from sqlalchemy.orm import Session
 
@@ -46,13 +46,12 @@ logging.basicConfig(
 
 logger = logging.getLogger("ai_sql_assistant")
 
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
 
-    logger.info(
-        f"REQUEST START | {request.method} {request.url.path}"
-    )
+    logger.info(f"REQUEST START | {request.method} {request.url.path}")
 
     try:
         response = await call_next(request)
@@ -67,12 +66,10 @@ async def log_requests(request: Request, call_next):
         return response
 
     except Exception as e:
-
         logger.exception(
             f"REQUEST ERROR | {request.method} {request.url.path} | "
             f"error={str(e)}"
         )
-
         raise e
 
 
@@ -85,10 +82,8 @@ pwd_context = CryptContext(
     deprecated="auto"
 )
 
-SECRET_KEY = "my-super-secret-key-change-later"
-
+SECRET_KEY = os.getenv("SECRET_KEY", "my-super-secret-key-change-later")
 ALGORITHM = "HS256"
-
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 security = HTTPBearer(auto_error=False)
@@ -102,8 +97,9 @@ client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
 
+
 # =========================
-# Models
+# Request Models
 # =========================
 
 class SignupRequest(BaseModel):
@@ -140,27 +136,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # =========================
 # Helpers
 # =========================
 
 def clean_table_name(filename: str) -> str:
-
     name = os.path.splitext(filename)[0]
-
     name = name.strip().lower()
-
-    name = re.sub(
-        r"[^a-zA-Z0-9_]",
-        "_",
-        name
-    )
-
-    name = re.sub(
-        r"_+",
-        "_",
-        name
-    )
+    name = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+    name = re.sub(r"_+", "_", name)
 
     if not name:
         name = "uploaded_data"
@@ -171,11 +156,28 @@ def clean_table_name(filename: str) -> str:
     return name
 
 
+def create_access_token(data: dict):
+    to_encode = data.copy()
+
+    expire = datetime.utcnow() + timedelta(
+        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
+    to_encode.update({"exp": expire})
+
+    encoded_jwt = jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+
+    return encoded_jwt
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
     try:
-
         if credentials is None:
             return {"guest": True}
 
@@ -187,18 +189,33 @@ def get_current_user(
             algorithms=[ALGORITHM]
         )
 
+        user_id = payload.get("user_id")
+        email = payload.get("email")
+
+        if user_id is None:
+            return {"guest": True}
+
         return {
             "guest": False,
-            "user_id": payload.get("user_id"),
-            "email": payload.get("email"),
+            "user_id": user_id,
+            "email": email,
         }
 
     except JWTError:
         return {"guest": True}
 
 
-def get_database_path(user_id: int):
+def require_login(current_user: dict):
+    if current_user.get("guest"):
+        return {
+            "success": False,
+            "error": "Please login first"
+        }
 
+    return None
+
+
+def get_database_path(user_id: int):
     return os.path.join(
         DATA_DIR,
         f"user_{user_id}.db"
@@ -206,11 +223,8 @@ def get_database_path(user_id: int):
 
 
 def get_database_schema_text(database_path: str) -> str:
-
     try:
-
         conn = sqlite3.connect(database_path)
-
         cursor = conn.cursor()
 
         cursor.execute(
@@ -218,11 +232,9 @@ def get_database_schema_text(database_path: str) -> str:
         )
 
         tables = cursor.fetchall()
-
         schema_lines = []
 
         for table in tables:
-
             table_name = table[0]
 
             cursor.execute(
@@ -230,7 +242,6 @@ def get_database_schema_text(database_path: str) -> str:
             )
 
             columns = cursor.fetchall()
-
             column_names = [col[1] for col in columns]
 
             schema_lines.append(
@@ -242,19 +253,13 @@ def get_database_schema_text(database_path: str) -> str:
         return "\n".join(schema_lines)
 
     except Exception as e:
-
         logger.exception(
             f"SCHEMA TEXT ERROR | error={str(e)}"
         )
-
         return ""
 
 
-def generate_sql_with_ai(
-    question: str,
-    schema: str
-) -> str:
-
+def generate_sql_with_ai(question: str, schema: str) -> str:
     if not schema:
         return (
             "SELECT 'No dataset uploaded yet. "
@@ -315,7 +320,6 @@ User question:
 
 
 def validate_sql(sql: str) -> bool:
-
     forbidden = [
         "DELETE",
         "DROP",
@@ -331,22 +335,15 @@ def validate_sql(sql: str) -> bool:
         return False
 
     for word in forbidden:
-
         if word in sql_upper:
             return False
 
     return True
 
 
-def execute_sql(
-    database_path: str,
-    sql: str
-):
-
+def execute_sql(database_path: str, sql: str):
     try:
-
         conn = sqlite3.connect(database_path)
-
         cursor = conn.cursor()
 
         cursor.execute(sql)
@@ -370,7 +367,6 @@ def execute_sql(
         }
 
     except Exception as e:
-
         logger.exception(
             f"SQL EXECUTION ERROR | sql={sql} | error={str(e)}"
         )
@@ -379,25 +375,6 @@ def execute_sql(
             "success": False,
             "error": str(e),
         }
-
-
-def create_access_token(data: dict):
-
-    to_encode = data.copy()
-
-    expire = datetime.utcnow() + timedelta(
-        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-    )
-
-    to_encode.update({"exp": expire})
-
-    encoded_jwt = jwt.encode(
-        to_encode,
-        SECRET_KEY,
-        algorithm=ALGORITHM
-    )
-
-    return encoded_jwt
 
 
 def generate_suggested_questions(
@@ -435,7 +412,6 @@ def generate_suggested_questions(
     ]
 
     if numeric_columns:
-
         col = numeric_columns[0]
 
         suggestions.append(
@@ -448,15 +424,116 @@ def generate_suggested_questions(
 
     return suggestions[:6]
 
+
+def build_result_summary(columns, rows):
+    return json.dumps(
+        {
+            "columns": columns,
+            "rows": rows[:20],
+            "rows_count": len(rows),
+        },
+        ensure_ascii=False,
+    )
+
+
 # =========================
 # Routes
 # =========================
 
 @app.get("/")
 def root():
-
     return {
         "message": "AI Text-to-SQL API Running",
+    }
+
+
+@app.post("/signup")
+def signup(
+    request: SignupRequest,
+    db: Session = Depends(get_db),
+):
+    existing_user = (
+        db.query(User)
+        .filter(User.email == request.email)
+        .first()
+    )
+
+    if existing_user:
+        return {
+            "success": False,
+            "error": "Email already exists"
+        }
+
+    password_hash = pwd_context.hash(request.password)
+
+    user = User(
+        full_name=request.full_name,
+        email=request.email,
+        password_hash=password_hash,
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token(
+        {
+            "user_id": user.id,
+            "email": user.email,
+        }
+    )
+
+    return {
+        "success": True,
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+        }
+    }
+
+
+@app.post("/login")
+def login(
+    request: LoginRequest,
+    db: Session = Depends(get_db),
+):
+    user = (
+        db.query(User)
+        .filter(User.email == request.email)
+        .first()
+    )
+
+    if not user:
+        return {
+            "success": False,
+            "error": "Invalid email or password"
+        }
+
+    if not pwd_context.verify(request.password, user.password_hash):
+        return {
+            "success": False,
+            "error": "Invalid email or password"
+        }
+
+    token = create_access_token(
+        {
+            "user_id": user.id,
+            "email": user.email,
+        }
+    )
+
+    return {
+        "success": True,
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+        }
     }
 
 
@@ -465,16 +542,14 @@ def get_datasets(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    login_error = require_login(current_user)
 
-    if current_user.get("guest"):
-
+    if login_error:
         return []
 
     datasets = (
         db.query(Dataset)
-        .filter(
-            Dataset.user_id == current_user["user_id"]
-        )
+        .filter(Dataset.user_id == current_user["user_id"])
         .order_by(Dataset.created_at.desc())
         .all()
     )
@@ -485,6 +560,7 @@ def get_datasets(
             "table_name": item.table_name,
             "file_name": item.original_file_name,
             "rows_count": item.rows_count,
+            "columns": json.loads(item.columns_json or "[]"),
             "created_at": item.created_at,
         }
         for item in datasets
@@ -497,29 +573,31 @@ async def upload_csv(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-
     try:
+        login_error = require_login(current_user)
 
-        if current_user.get("guest"):
-
-            return {
-                "success": False,
-                "error": "Please login first"
-            }
+        if login_error:
+            return login_error
 
         logger.info(
-            f"UPLOAD START | filename={file.filename}"
+            f"UPLOAD START | user_id={current_user['user_id']} | filename={file.filename}"
         )
 
         if not file.filename.lower().endswith(".csv"):
-
             return {
                 "success": False,
                 "error": "Only CSV files are allowed",
             }
 
-        temp_csv_path = os.path.join(
+        user_dir = os.path.join(
             DATA_DIR,
+            f"user_{current_user['user_id']}"
+        )
+
+        os.makedirs(user_dir, exist_ok=True)
+
+        temp_csv_path = os.path.join(
+            user_dir,
             file.filename
         )
 
@@ -546,16 +624,15 @@ async def upload_csv(
             if_exists="replace",
             index=False,
         )
-        
 
         conn.close()
 
         dataset = Dataset(
             user_id=current_user["user_id"],
-            table_name=table_name,
             original_file_name=file.filename,
+            table_name=table_name,
             rows_count=len(df),
-            columns_json=json.dumps(list(df.columns)),
+            columns_json=json.dumps(list(df.columns), ensure_ascii=False),
         )
 
         db.add(dataset)
@@ -571,14 +648,13 @@ async def upload_csv(
             "success": True,
             "dataset_id": dataset.id,
             "table_name": table_name,
-            "database": database_path,
+            "file_name": file.filename,
             "columns": list(df.columns),
             "rows_count": len(df),
             "suggested_questions": suggestions,
         }
 
     except Exception as e:
-
         logger.exception(
             f"UPLOAD ERROR | error={str(e)}"
         )
@@ -595,23 +671,25 @@ def generate_sql(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-
     try:
+        login_error = require_login(current_user)
+
+        if login_error:
+            return login_error
 
         dataset = (
             db.query(Dataset)
             .filter(
                 Dataset.id == request.dataset_id,
-                Dataset.user_id == current_user["user_id"]
+                Dataset.user_id == current_user["user_id"],
             )
             .first()
         )
 
         if not dataset:
-
             return {
                 "success": False,
-                "error": "Dataset not found"
+                "error": "Dataset not found for this user"
             }
 
         database_path = get_database_path(
@@ -628,7 +706,6 @@ def generate_sql(
         )
 
         if not validate_sql(sql):
-
             return {
                 "success": False,
                 "error": "Unsafe SQL blocked"
@@ -640,32 +717,41 @@ def generate_sql(
         )
 
         if not result["success"]:
-
             return {
                 "success": False,
                 "error": result["error"],
             }
 
+        result_summary = build_result_summary(
+            result["columns"],
+            result["rows"]
+        )
+
         history = QueryHistory(
             user_id=current_user["user_id"],
+            dataset_id=dataset.id,
             question=request.question,
             generated_sql=sql,
-            dataset_name=dataset.table_name,
+            result_summary=result_summary,
+            dataset_name=dataset.original_file_name,
         )
 
         db.add(history)
         db.commit()
+        db.refresh(history)
 
         return {
             "success": True,
+            "history_id": history.id,
             "question": request.question,
+            "dataset_id": dataset.id,
+            "dataset_name": dataset.original_file_name,
             "sql": sql,
             "columns": result["columns"],
             "rows": result["rows"],
         }
 
     except Exception as e:
-
         logger.exception(
             f"GENERATE SQL ERROR | error={str(e)}"
         )
@@ -674,5 +760,72 @@ def generate_sql(
             "success": False,
             "error": str(e),
         }
-    
-    
+
+
+@app.get("/history")
+def get_history(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    login_error = require_login(current_user)
+
+    if login_error:
+        return []
+
+    history_items = (
+        db.query(QueryHistory)
+        .filter(QueryHistory.user_id == current_user["user_id"])
+        .order_by(QueryHistory.created_at.desc())
+        .all()
+    )
+
+    return [
+        {
+            "id": item.id,
+            "dataset_id": item.dataset_id,
+            "dataset_name": item.dataset_name,
+            "question": item.question,
+            "generated_sql": item.generated_sql,
+            "result_summary": json.loads(item.result_summary or "{}"),
+            "created_at": item.created_at,
+        }
+        for item in history_items
+    ]
+
+
+@app.get("/history/{history_id}")
+def get_history_item(
+    history_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    login_error = require_login(current_user)
+
+    if login_error:
+        return login_error
+
+    item = (
+        db.query(QueryHistory)
+        .filter(
+            QueryHistory.id == history_id,
+            QueryHistory.user_id == current_user["user_id"],
+        )
+        .first()
+    )
+
+    if not item:
+        return {
+            "success": False,
+            "error": "History item not found"
+        }
+
+    return {
+        "success": True,
+        "id": item.id,
+        "dataset_id": item.dataset_id,
+        "dataset_name": item.dataset_name,
+        "question": item.question,
+        "generated_sql": item.generated_sql,
+        "result_summary": json.loads(item.result_summary or "{}"),
+        "created_at": item.created_at,
+    }

@@ -185,9 +185,7 @@ function QueryPage() {
     setResult(null);
 
     const finalQuestion = `Use table ${selectedDataset}. ${ques}`;
-    const res = await generateSQL(finalQuestion);
-
-    setLoading(false);
+    const res = await generateSQL(question, Number(selectedDataset));
 
     if (res.sql && FORBIDDEN.test(res.sql)) {
       setError(t.safetyNote);

@@ -29,15 +29,27 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   }, []);
 
   function handleLogout() {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("token");
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("guest_mode");
-      localStorage.removeItem("email");
+  if (typeof window !== "undefined") {
 
-      window.location.href = "/";
-    }
+    localStorage.removeItem("token");
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("guest_mode");
+    localStorage.removeItem("email");
+
+    // ניקוי מידע של המערכת
+    localStorage.removeItem("selected_dataset");
+    localStorage.removeItem("generated_sql");
+    localStorage.removeItem("last_question");
+    localStorage.removeItem("query_history");
+    localStorage.removeItem("current_dataset");
+    localStorage.removeItem("uploaded_dataset");
+
+    // ניקוי מלא של כל localStorage
+    localStorage.clear();
+
+    window.location.href = "/";
   }
+}
 
   const items = [
     { to: "/dashboard", label: t.nav.query, icon: Sparkles },

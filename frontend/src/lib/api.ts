@@ -1,8 +1,11 @@
 const API_BASE_URL = "https://ai-sql-assistant-978r.onrender.com";
+
 export type UploadResponse = {
   success: boolean;
   message?: string;
+  dataset_id?: number;
   table_name?: string;
+  file_name?: string;
   database?: string;
   columns?: string[];
   rows_count?: number;
@@ -12,7 +15,10 @@ export type UploadResponse = {
 
 export type SqlResponse = {
   success: boolean;
+  history_id?: number;
   question?: string;
+  dataset_id?: number;
+  dataset_name?: string;
   sql?: string;
   explanation?: string;
   columns?: string[];
@@ -20,31 +26,81 @@ export type SqlResponse = {
   error?: string;
 };
 
+export type DatasetItem = {
+  id: number;
+  table_name: string;
+  file_name: string;
+  rows_count?: number;
+  columns?: string[];
+  created_at?: string;
+};
+
+export type HistoryItem = {
+  id: number;
+  dataset_id?: number;
+  dataset_name?: string;
+  question: string;
+  generated_sql?: string;
+  result_summary?: string | {
+    columns?: string[];
+    rows?: any[][];
+    rows_count?: number;
+  };
+  created_at?: string;
+};
+
+export type DatasetInsights = {
+  success: boolean;
+  table_name?: string;
+  rows_count?: number;
+  columns_count?: number;
+  columns?: string[];
+  column_types?: Record<string, string>;
+  missing_values?: Record<string, number>;
+  numeric_summary?: Record<
+    string,
+    {
+      average: number;
+      min: number;
+      max: number;
+    }
+  >;
+  top_values?: Record<string, Record<string, number>>;
+  suggested_questions?: string[];
+  error?: string;
+};
+
+function getAuthHeaders(): Record<string, string> {
+  const token = localStorage.getItem("access_token");
+
+  if (!token) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 export async function generateSQL(
-  question: string
+  question: string,
+  datasetId: number
 ): Promise<SqlResponse> {
-
   try {
-
-    const token = localStorage.getItem("access_token");
-
     const response = await fetch(`${API_BASE_URL}/generate-sql`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: JSON.stringify({
         question,
+        dataset_id: datasetId,
       }),
     });
 
-    const data: SqlResponse = await response.json();
-
-    return data;
-
+    return await response.json();
   } catch (error) {
-
     return {
       success: false,
       error: String(error),
@@ -54,25 +110,19 @@ export async function generateSQL(
 
 export async function uploadCSV(file: File): Promise<UploadResponse> {
   try {
-
-    const token = localStorage.getItem("access_token");
-
     const formData = new FormData();
-
     formData.append("file", file);
 
     const response = await fetch(`${API_BASE_URL}/upload-csv`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
       body: formData,
     });
 
     return await response.json();
-
   } catch (error) {
-
     return {
       success: false,
       error: String(error),
@@ -81,21 +131,15 @@ export async function uploadCSV(file: File): Promise<UploadResponse> {
 }
 
 export async function getSchema() {
-
   try {
-
-    const token = localStorage.getItem("access_token");
-
     const response = await fetch(`${API_BASE_URL}/schema`, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
       },
     });
 
     return await response.json();
-
   } catch (error) {
-
     return {
       success: false,
       error: String(error),
@@ -103,13 +147,8 @@ export async function getSchema() {
   }
 }
 
-export async function loginUser(
-  email: string,
-  password: string
-) {
-
+export async function loginUser(email: string, password: string) {
   try {
-
     const response = await fetch(`${API_BASE_URL}/login`, {
       method: "POST",
       headers: {
@@ -125,18 +164,18 @@ export async function loginUser(
 
     if (data.access_token) {
       localStorage.setItem("access_token", data.access_token);
+      localStorage.removeItem("guest_mode");
     }
 
     return data;
-
   } catch (error) {
-
     return {
       success: false,
       error: String(error),
     };
   }
 }
+
 export async function signupUser(
   full_name: string,
   email: string,
@@ -163,13 +202,26 @@ export async function signupUser(
     };
   }
 }
-export async function getHistory() {
-  try {
-    const token = localStorage.getItem("access_token");
 
+export async function getHistory(): Promise<HistoryItem[]> {
+  try {
     const response = await fetch(`${API_BASE_URL}/history`, {
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...getAuthHeaders(),
+      },
+    });
+
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function getHistoryItem(historyId: number) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/${historyId}`, {
+      headers: {
+        ...getAuthHeaders(),
       },
     });
 
@@ -182,30 +234,14 @@ export async function getHistory() {
   }
 }
 
-export type DatasetInsights = {
-  success: boolean;
-  table_name?: string;
-  rows_count?: number;
-  columns_count?: number;
-  columns?: string[];
-  column_types?: Record<string, string>;
-  missing_values?: Record<string, number>;
-  numeric_summary?: Record<
-    string,
-    {
-      average: number;
-      min: number;
-      max: number;
-    }
-  >;
-  top_values?: Record<string, Record<string, number>>;
-  suggested_questions?: string[];
-  error?: string;
-};
-
 export async function getDatasetInsights(): Promise<DatasetInsights> {
   try {
-    const response = await fetch(`${API_BASE_URL}/dataset-insights`);
+    const response = await fetch(`${API_BASE_URL}/dataset-insights`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
     return await response.json();
   } catch (error) {
     return {
@@ -214,14 +250,23 @@ export async function getDatasetInsights(): Promise<DatasetInsights> {
     };
   }
 }
-export async function getDatasets() {
-  const token = localStorage.getItem("access_token");
 
-  const response = await fetch(`${API_BASE_URL}/datasets`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+export async function getDatasets(): Promise<DatasetItem[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/datasets`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
 
-  return response.json();
+    return await response.json();
+  } catch {
+    return [];
+  }
+}
+
+export function logoutUser() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("guest_mode");
+  localStorage.removeItem("selected_dataset_id");
 }
