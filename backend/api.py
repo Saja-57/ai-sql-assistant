@@ -615,17 +615,18 @@ async def upload_csv(
 
         conn.close()
 
+        # ✅ FIX: חיפוש לפי original_file_name למניעת כפילויות
         dataset = (
             db.query(Dataset)
             .filter(
                 Dataset.user_id == current_user["user_id"],
-                Dataset.table_name == table_name,
+                Dataset.original_file_name == file.filename,
             )
             .first()
         )
 
         if dataset:
-            dataset.original_file_name = file.filename
+            dataset.table_name = table_name
             dataset.rows_count = len(df)
             dataset.columns_json = json.dumps(list(df.columns), ensure_ascii=False)
         else:
@@ -650,6 +651,7 @@ async def upload_csv(
             "success": True,
             "dataset_id": dataset.id,
             "table_name": table_name,
+            # ✅ FIX: מחזיר את שם הקובץ המקורי בלי prefix
             "file_name": file.filename,
             "columns": list(df.columns),
             "rows_count": len(df),
@@ -663,6 +665,7 @@ async def upload_csv(
             "success": False,
             "error": str(e),
         }
+
 
 @app.post("/generate-sql")
 def generate_sql(
@@ -829,6 +832,7 @@ def get_history_item(
         "created_at": item.created_at,
     }
 
+
 @app.get("/dataset-insights")
 def dataset_insights(
     dataset_id: int,
@@ -906,6 +910,7 @@ def dataset_insights(
             "success": True,
             "dataset_id": dataset.id,
             "table_name": dataset.table_name,
+            # ✅ FIX: מחזיר שם קובץ מקורי בלי prefix
             "file_name": dataset.original_file_name,
             "rows_count": int(len(df)),
             "columns_count": int(len(columns)),

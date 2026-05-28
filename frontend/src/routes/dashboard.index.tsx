@@ -59,7 +59,7 @@ function QueryPage() {
   );
 
   const selectedDatasetName =
-    selectedDataset?.table_name || selectedDataset?.file_name || "";
+    selectedDataset?.file_name || selectedDataset?.table_name || "";
 
   const hasDataset = datasets.length > 0 && selectedDatasetIdState !== null;
 
@@ -88,9 +88,7 @@ function QueryPage() {
       }
 
       const savedId = getSelectedDatasetId();
-
-      const nextDataset =
-        data.find((d) => d.id === savedId) || data[0];
+      const nextDataset = data.find((d) => d.id === savedId) || data[0];
 
       setSelectedDatasetIdState(nextDataset.id);
       setSelectedDatasetId(nextDataset.id);
@@ -217,7 +215,7 @@ function QueryPage() {
     setUploading(false);
 
     if (r.success) {
-      setUploadMsg(`${t.uploaded} (${r.table_name || r.file_name || file.name})`);
+      setUploadMsg(`${t.uploaded} (${r.file_name || r.table_name || file.name})`);
 
       if (r.dataset_id) {
         setSelectedDatasetIdState(r.dataset_id);
@@ -238,6 +236,25 @@ function QueryPage() {
     }
   };
 
+  const handleDatasetChange = async (nextId: number) => {
+    if (!Number.isFinite(nextId)) return;
+
+    setSelectedDatasetIdState(nextId);
+    setSelectedDatasetId(nextId);
+    setResult(null);
+    setError(null);
+    setQuestion("");
+    setGeneratedQuestion("");
+    setInsights(null);
+    setSuggestions([]);
+
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("query-page-state");
+    }
+
+    await loadInsights(nextId);
+  };
+
   const clearQueryState = () => {
     setQuestion("");
     setResult(null);
@@ -247,6 +264,49 @@ function QueryPage() {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("query-page-state");
     }
+  };
+
+  // ✅ Insights קומפקטי — רק 3 מספרים בשורה אחת
+  const CompactInsights = () => {
+    if (!insights?.success) return null;
+
+    return (
+      <div className="glass rounded-2xl p-4 shadow-card">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-bold flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            AI Insights
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            {insights.file_name || selectedDatasetName}
+          </span>
+        </div>
+
+        <div className="flex gap-3">
+          <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
+            <div className="text-xs text-muted-foreground">Rows</div>
+            <div className="text-lg font-bold">{insights.rows_count ?? "-"}</div>
+          </div>
+          <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
+            <div className="text-xs text-muted-foreground">Columns</div>
+            <div className="text-lg font-bold">
+              {insights.columns_count ?? insights.columns?.length ?? "-"}
+            </div>
+          </div>
+          {insights.numeric_summary &&
+            Object.keys(insights.numeric_summary).length > 0 && (
+              <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
+                <div className="text-xs text-muted-foreground">
+                  Avg {Object.keys(insights.numeric_summary)[0]}
+                </div>
+                <div className="text-lg font-bold">
+                  {Object.values(insights.numeric_summary)[0].average.toFixed(1)}
+                </div>
+              </div>
+            )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -288,6 +348,7 @@ function QueryPage() {
         </div>
       </header>
 
+      {/* תיבת השאלה */}
       <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -298,19 +359,7 @@ function QueryPage() {
           <div className="relative w-full md:w-80">
             <select
               value={selectedDatasetIdState ?? ""}
-              onChange={async (e) => {
-                const nextId = Number(e.target.value);
-
-                if (!Number.isFinite(nextId)) return;
-
-                setSelectedDatasetIdState(nextId);
-                setSelectedDatasetId(nextId);
-                setResult(null);
-                setError(null);
-                setGeneratedQuestion("");
-
-                await loadInsights(nextId);
-              }}
+              onChange={(e) => handleDatasetChange(Number(e.target.value))}
               className="w-full appearance-none rounded-xl glass px-4 py-2.5 pr-10 text-sm outline-none"
             >
               {datasets.length === 0 && (
@@ -414,74 +463,13 @@ function QueryPage() {
         </div>
       </div>
 
-      {insights?.success && (
-        <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            AI Insights & Recommendations
-          </h2>
+      {/* ✅ לפני query: insights קומפקטי */}
+      {!result && !loading && !error && <CompactInsights />}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <div className="text-sm text-muted-foreground">Rows</div>
-              <div className="text-2xl font-bold">
-                {insights.rows_count ?? "-"}
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <div className="text-sm text-muted-foreground">Columns</div>
-              <div className="text-2xl font-bold">
-                {insights.columns_count ?? insights.columns?.length ?? "-"}
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <div className="text-sm text-muted-foreground">Table</div>
-              <div className="text-lg font-semibold break-all">
-                {insights.table_name || selectedDatasetName}
-              </div>
-            </div>
-          </div>
-
-          {insights.missing_values && (
-            <div className="rounded-2xl bg-muted/30 p-4">
-              <div className="font-semibold mb-2">Missing Values</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
-                {Object.entries(insights.missing_values).map(([col, val]) => (
-                  <div key={col} className="flex justify-between gap-4">
-                    <span className="text-muted-foreground">{col}</span>
-                    <span className="font-medium">{val}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {insights.numeric_summary && (
-            <div className="rounded-2xl bg-muted/30 p-4">
-              <div className="font-semibold mb-2">Numeric Summary</div>
-              <div className="space-y-2 text-sm">
-                {Object.entries(insights.numeric_summary).map(([col, s]) => (
-                  <div key={col} className="rounded-xl bg-background/40 p-3">
-                    <div className="font-medium mb-1">{col}</div>
-                    <div className="flex flex-wrap gap-4 text-muted-foreground">
-                      <span>Avg: {s.average}</span>
-                      <span>Min: {s.min}</span>
-                      <span>Max: {s.max}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* שגיאה */}
       {error && (
         <div className="glass rounded-2xl p-4 border-l-4 border-destructive flex items-start gap-3 animate-scale-in">
           <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
-
           <div>
             <div className="font-semibold text-destructive">{t.error}</div>
             <div className="text-sm text-muted-foreground mt-0.5">{error}</div>
@@ -489,6 +477,7 @@ function QueryPage() {
         </div>
       )}
 
+      {/* לודינג */}
       {loading && (
         <div className="glass rounded-2xl p-6 space-y-3">
           <div className="h-4 w-1/3 bg-muted rounded shimmer" />
@@ -497,6 +486,7 @@ function QueryPage() {
         </div>
       )}
 
+      {/* ✅ אחרי query: SQL → תוצאות → insights קומפקטי */}
       {result?.sql && (
         <div className="space-y-6">
           <section>
@@ -526,10 +516,13 @@ function QueryPage() {
               <ResultsTable columns={result.columns} rows={result.rows} />
             </section>
           )}
+
+          {/* ✅ Insights קומפקטי מתחת לתוצאות */}
+          <CompactInsights />
         </div>
       )}
 
-      {!result && !loading && !error && (
+      {!result && !loading && !error && !insights?.success && (
         <div className="glass rounded-3xl p-12 text-center text-muted-foreground">
           <Sparkles className="w-8 h-8 mx-auto mb-3 text-primary/60" />
           {hasDataset
