@@ -589,17 +589,10 @@ async def upload_csv(
                 "error": "Only CSV files are allowed",
             }
 
-        user_dir = os.path.join(
-            DATA_DIR,
-            f"user_{current_user['user_id']}"
-        )
-
+        user_dir = os.path.join(DATA_DIR, f"user_{current_user['user_id']}")
         os.makedirs(user_dir, exist_ok=True)
 
-        temp_csv_path = os.path.join(
-            user_dir,
-            file.filename
-        )
+        temp_csv_path = os.path.join(user_dir, file.filename)
 
         with open(temp_csv_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -607,14 +600,9 @@ async def upload_csv(
         df = pd.read_csv(temp_csv_path)
 
         safe_name = clean_table_name(file.filename)
+        table_name = f"user_{current_user['user_id']}_{safe_name}"
 
-        table_name = (
-            f"user_{current_user['user_id']}_{safe_name}"
-        )
-
-        database_path = get_database_path(
-            current_user["user_id"]
-        )
+        database_path = get_database_path(current_user["user_id"])
 
         conn = sqlite3.connect(database_path)
 
@@ -627,21 +615,35 @@ async def upload_csv(
 
         conn.close()
 
-        dataset = Dataset(
-            user_id=current_user["user_id"],
-            original_file_name=file.filename,
-            table_name=table_name,
-            rows_count=len(df),
-            columns_json=json.dumps(list(df.columns), ensure_ascii=False),
+        dataset = (
+            db.query(Dataset)
+            .filter(
+                Dataset.user_id == current_user["user_id"],
+                Dataset.table_name == table_name,
+            )
+            .first()
         )
 
-        db.add(dataset)
+        if dataset:
+            dataset.original_file_name = file.filename
+            dataset.rows_count = len(df)
+            dataset.columns_json = json.dumps(list(df.columns), ensure_ascii=False)
+        else:
+            dataset = Dataset(
+                user_id=current_user["user_id"],
+                original_file_name=file.filename,
+                table_name=table_name,
+                rows_count=len(df),
+                columns_json=json.dumps(list(df.columns), ensure_ascii=False),
+            )
+            db.add(dataset)
+
         db.commit()
         db.refresh(dataset)
 
         suggestions = generate_suggested_questions(
             table_name,
-            list(df.columns)
+            list(df.columns),
         )
 
         return {
@@ -655,15 +657,12 @@ async def upload_csv(
         }
 
     except Exception as e:
-        logger.exception(
-            f"UPLOAD ERROR | error={str(e)}"
-        )
+        logger.exception(f"UPLOAD ERROR | error={str(e)}")
 
         return {
             "success": False,
             "error": str(e),
         }
-
 
 @app.post("/generate-sql")
 def generate_sql(
@@ -829,3 +828,99 @@ def get_history_item(
         "result_summary": json.loads(item.result_summary or "{}"),
         "created_at": item.created_at,
     }
+
+@app.get("/dataset-insights")
+def dataset_insights(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    login_error = require_login(current_user)
+
+    if login_error:
+        return login_error
+
+    dataset = (
+        db.query(Dataset)
+        .filter(
+            Dataset.id == dataset_id,
+            Dataset.user_id == current_user["user_id"],
+        )
+        .first()
+    )
+
+    if not dataset:
+        return {
+            "success": False,
+            "error": "Dataset not found for this user",
+        }
+
+    database_path = get_database_path(current_user["user_id"])
+
+    try:
+        conn = sqlite3.connect(database_path)
+        df = pd.read_sql_query(
+            f'SELECT * FROM "{dataset.table_name}"',
+            conn,
+        )
+        conn.close()
+
+        columns = list(df.columns)
+
+        column_types = {
+            col: str(df[col].dtype)
+            for col in columns
+        }
+
+        missing_values = {
+            col: int(df[col].isna().sum())
+            for col in columns
+        }
+
+        numeric_summary = {}
+
+        numeric_df = df.select_dtypes(include=["number"])
+
+        for col in numeric_df.columns:
+            numeric_summary[col] = {
+                "average": float(numeric_df[col].mean()),
+                "min": float(numeric_df[col].min()),
+                "max": float(numeric_df[col].max()),
+            }
+
+        top_values = {}
+
+        for col in columns:
+            values = df[col].value_counts(dropna=True).head(5)
+            top_values[col] = {
+                str(k): int(v)
+                for k, v in values.items()
+            }
+
+        suggested_questions = generate_suggested_questions(
+            dataset.table_name,
+            columns,
+        )
+
+        return {
+            "success": True,
+            "dataset_id": dataset.id,
+            "table_name": dataset.table_name,
+            "file_name": dataset.original_file_name,
+            "rows_count": int(len(df)),
+            "columns_count": int(len(columns)),
+            "columns": columns,
+            "column_types": column_types,
+            "missing_values": missing_values,
+            "numeric_summary": numeric_summary,
+            "top_values": top_values,
+            "suggested_questions": suggested_questions,
+        }
+
+    except Exception as e:
+        logger.exception(f"DATASET INSIGHTS ERROR | error={str(e)}")
+
+        return {
+            "success": False,
+            "error": str(e),
+        }

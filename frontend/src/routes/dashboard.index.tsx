@@ -12,11 +12,14 @@ import { useI18n } from "@/lib/i18n";
 import { useHistory } from "@/lib/history";
 import {
   generateSQL,
-uploadCSV,
-getDatasets,
-getDatasetInsights,
+  uploadCSV,
+  getDatasets,
+  getDatasetInsights,
+  getSelectedDatasetId,
+  setSelectedDatasetId,
   type SqlResponse,
   type DatasetInsights,
+  type DatasetItem,
 } from "@/lib/api";
 import { SQLBlock } from "@/components/SQLBlock";
 import { ResultsTable } from "@/components/ResultsTable";
@@ -38,8 +41,10 @@ function QueryPage() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const [datasets, setDatasets] = useState<any[]>([]);
-  const [selectedDataset, setSelectedDataset] = useState("");
+  const [datasets, setDatasets] = useState<DatasetItem[]>([]);
+  const [selectedDatasetIdState, setSelectedDatasetIdState] =
+    useState<number | null>(null);
+
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [insights, setInsights] = useState<DatasetInsights | null>(null);
   const [generatedQuestion, setGeneratedQuestion] = useState("");
@@ -49,62 +54,61 @@ function QueryPage() {
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const hasDataset = datasets.length > 0 && selectedDataset.trim() !== "";
+  const selectedDataset = datasets.find(
+    (d) => d.id === selectedDatasetIdState
+  );
 
-  const loadDatasets = async () => {
-  try {
-    const data = await getDatasets();
+  const selectedDatasetName =
+    selectedDataset?.table_name || selectedDataset?.file_name || "";
 
-    setDatasets(data);
+  const hasDataset = datasets.length > 0 && selectedDatasetIdState !== null;
 
-    if (data.length === 0) {
-      setSelectedDataset("");
-      setInsights(null);
-      setSuggestions([]);
-      return;
-    }
-
-    const savedSelected =
-      sessionStorage.getItem("selected_dataset") || selectedDataset;
-
-    const datasetNames = data.map((d: any) => d.table_name);
-
-    const nextSelected =
-      savedSelected && datasetNames.includes(savedSelected)
-        ? savedSelected
-        : data[0].table_name;
-
-    setSelectedDataset(nextSelected);
-
-    sessionStorage.setItem(
-      "selected_dataset",
-      nextSelected
-    );
-
-    const insightsRes = await getDatasetInsights();
+  async function loadInsights(datasetId: number) {
+    const insightsRes = await getDatasetInsights(datasetId);
 
     if (insightsRes.success) {
       setInsights(insightsRes);
-
-      if (insightsRes.suggested_questions) {
-        setSuggestions(insightsRes.suggested_questions);
-      }
+      setSuggestions(insightsRes.suggested_questions || []);
+    } else {
+      setInsights(null);
+      setSuggestions([]);
     }
-
-  } catch {
-
-    setDatasets([]);
-    setSelectedDataset("");
-    setInsights(null);
-    setSuggestions([]);
   }
-};
+
+  const loadDatasets = async () => {
+    try {
+      const data = await getDatasets();
+      setDatasets(data);
+
+      if (!Array.isArray(data) || data.length === 0) {
+        setSelectedDatasetIdState(null);
+        setInsights(null);
+        setSuggestions([]);
+        return;
+      }
+
+      const savedId = getSelectedDatasetId();
+
+      const nextDataset =
+        data.find((d) => d.id === savedId) || data[0];
+
+      setSelectedDatasetIdState(nextDataset.id);
+      setSelectedDatasetId(nextDataset.id);
+
+      await loadInsights(nextDataset.id);
+    } catch {
+      setDatasets([]);
+      setSelectedDatasetIdState(null);
+      setInsights(null);
+      setSuggestions([]);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const savedToken =
-      localStorage.getItem("token") || localStorage.getItem("access_token");
+      localStorage.getItem("access_token") || localStorage.getItem("token");
 
     setToken(savedToken);
     setIsGuest(localStorage.getItem("guest_mode") === "true" && !savedToken);
@@ -114,12 +118,10 @@ function QueryPage() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-
         setQuestion(parsed.question || "");
         setResult(parsed.result || null);
         setError(parsed.error || null);
         setUploadMsg(parsed.uploadMsg || null);
-        setSelectedDataset(parsed.selectedDataset || "");
         setGeneratedQuestion(parsed.generatedQuestion || "");
       } catch {
         sessionStorage.removeItem("query-page-state");
@@ -139,11 +141,10 @@ function QueryPage() {
       loadDatasets();
     } else {
       setDatasets([]);
-      setSelectedDataset("");
+      setSelectedDatasetIdState(null);
       setInsights(null);
       setSuggestions([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, isGuest]);
 
   useEffect(() => {
@@ -156,25 +157,17 @@ function QueryPage() {
         result,
         error,
         uploadMsg,
-        selectedDataset,
         generatedQuestion,
       })
     );
-  }, [
-    question,
-    result,
-    error,
-    uploadMsg,
-    selectedDataset,
-    generatedQuestion,
-  ]);
+  }, [question, result, error, uploadMsg, generatedQuestion]);
 
   const run = async (q?: string) => {
     const ques = (q ?? question).trim();
 
     if (!ques) return;
 
-    if (!hasDataset) {
+    if (!selectedDatasetIdState) {
       setResult(null);
       setError("Please upload a CSV file before generating SQL.");
       return;
@@ -184,29 +177,32 @@ function QueryPage() {
     setError(null);
     setResult(null);
 
-    const finalQuestion = `Use table ${selectedDataset}. ${ques}`;
-    const res = await generateSQL(question, Number(selectedDataset));
+    try {
+      const res = await generateSQL(ques, selectedDatasetIdState);
 
-    if (res.sql && FORBIDDEN.test(res.sql)) {
-      setError(t.safetyNote);
-      add({ question: ques, sql: res.sql, success: false });
-      return;
+      if (res.sql && FORBIDDEN.test(res.sql)) {
+        setError(t.safetyNote);
+        add({ question: ques, sql: res.sql, success: false });
+        return;
+      }
+
+      if (!res.success) {
+        setError(
+          res.error ||
+            `This question does not match ${selectedDatasetName}. Try asking about the uploaded dataset.`
+        );
+        add({ question: ques, sql: res.sql, success: false });
+        return;
+      }
+
+      setResult(res);
+      setQuestion(ques);
+      setGeneratedQuestion(ques);
+
+      add({ question: ques, sql: res.sql, success: true });
+    } finally {
+      setLoading(false);
     }
-
-    if (!res.success) {
-      setError(
-        res.error ||
-          `This question does not match ${selectedDataset}. Try asking about the uploaded dataset.`
-      );
-      add({ question: ques, sql: res.sql, success: false });
-      return;
-    }
-
-    setResult(res);
-    setQuestion(ques);
-    setGeneratedQuestion(ques);
-
-    add({ question: ques, sql: res.sql, success: true });
   };
 
   const handleUpload = async (file: File) => {
@@ -221,11 +217,11 @@ function QueryPage() {
     setUploading(false);
 
     if (r.success) {
-      setUploadMsg(`${t.uploaded} (${r.table_name})`);
+      setUploadMsg(`${t.uploaded} (${r.table_name || r.file_name || file.name})`);
 
-      if (r.table_name) {
-        setSelectedDataset(r.table_name);
-        sessionStorage.setItem("selected_dataset", r.table_name);
+      if (r.dataset_id) {
+        setSelectedDatasetIdState(r.dataset_id);
+        setSelectedDatasetId(r.dataset_id);
       }
 
       if (r.suggested_questions) {
@@ -234,10 +230,8 @@ function QueryPage() {
 
       await loadDatasets();
 
-      const insightsRes = await getDatasetInsights();
-
-      if (insightsRes.success) {
-        setInsights(insightsRes);
+      if (r.dataset_id) {
+        await loadInsights(r.dataset_id);
       }
     } else {
       setUploadMsg(r.error || r.message || t.error);
@@ -303,13 +297,19 @@ function QueryPage() {
 
           <div className="relative w-full md:w-80">
             <select
-              value={selectedDataset}
-              onChange={(e) => {
-                setSelectedDataset(e.target.value);
-                sessionStorage.setItem("selected_dataset", e.target.value);
+              value={selectedDatasetIdState ?? ""}
+              onChange={async (e) => {
+                const nextId = Number(e.target.value);
+
+                if (!Number.isFinite(nextId)) return;
+
+                setSelectedDatasetIdState(nextId);
+                setSelectedDatasetId(nextId);
                 setResult(null);
                 setError(null);
                 setGeneratedQuestion("");
+
+                await loadInsights(nextId);
               }}
               className="w-full appearance-none rounded-xl glass px-4 py-2.5 pr-10 text-sm outline-none"
             >
@@ -318,13 +318,10 @@ function QueryPage() {
               )}
 
               {datasets.map((dataset) => (
-  <option
-    key={dataset.id}
-    value={dataset.table_name}
-  >
-    {dataset.file_name || dataset.table_name}
-  </option>
-))}
+                <option key={dataset.id} value={dataset.id}>
+                  {dataset.file_name || dataset.table_name}
+                </option>
+              ))}
             </select>
 
             <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
@@ -344,7 +341,7 @@ function QueryPage() {
             }}
             placeholder={
               hasDataset
-                ? `Ask a question about ${selectedDataset}`
+                ? `Ask a question about ${selectedDatasetName}`
                 : "Upload a CSV first, then ask questions about your data"
             }
             rows={2}
@@ -357,58 +354,129 @@ function QueryPage() {
           />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            {suggestions.map((example) => (
-              <button
-                key={example}
-                onClick={() => {
-                  setQuestion(example);
-                  setGeneratedQuestion("");
-                  run(example);
-                }}
-                className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
-              >
-                {example}
-              </button>
-            ))}
-          </div>
+        {suggestions.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Suggested Questions
+            </div>
 
-          <div className="flex items-center gap-2">
-            {(question || result || error) && (
-              <button
-                onClick={clearQueryState}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl glass text-sm font-semibold hover:bg-accent/30 transition"
-              >
-                Clear
-              </button>
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((example) => (
+                <button
+                  key={example}
+                  onClick={() => {
+                    setQuestion(example);
+                    setGeneratedQuestion("");
+                    run(example);
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {(question || result || error) && (
+            <button
+              onClick={clearQueryState}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl glass text-sm font-semibold hover:bg-accent/30 transition"
+            >
+              Clear
+            </button>
+          )}
+
+          <button
+            onClick={() => run()}
+            disabled={
+              loading ||
+              !question.trim() ||
+              !hasDataset ||
+              (result !== null && generatedQuestion === question.trim())
+            }
+            className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
             )}
 
-            <button
-              onClick={() => run()}
-              disabled={
-                loading ||
-                !question.trim() ||
-                !hasDataset ||
-                (result !== null && generatedQuestion === question.trim())
-              }
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl gradient-bg-primary text-white text-sm font-semibold shadow-elegant hover:shadow-glow transition disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Sparkles className="w-4 h-4" />
-              )}
-
-              {loading
-                ? t.generating
-                : result && generatedQuestion === question.trim()
-                ? "Generated"
-                : t.generateSQL}
-            </button>
-          </div>
+            {loading
+              ? t.generating
+              : result && generatedQuestion === question.trim()
+              ? "Generated"
+              : t.generateSQL}
+          </button>
         </div>
       </div>
+
+      {insights?.success && (
+        <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            AI Insights & Recommendations
+          </h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-2xl bg-muted/40 p-4">
+              <div className="text-sm text-muted-foreground">Rows</div>
+              <div className="text-2xl font-bold">
+                {insights.rows_count ?? "-"}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-muted/40 p-4">
+              <div className="text-sm text-muted-foreground">Columns</div>
+              <div className="text-2xl font-bold">
+                {insights.columns_count ?? insights.columns?.length ?? "-"}
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-muted/40 p-4">
+              <div className="text-sm text-muted-foreground">Table</div>
+              <div className="text-lg font-semibold break-all">
+                {insights.table_name || selectedDatasetName}
+              </div>
+            </div>
+          </div>
+
+          {insights.missing_values && (
+            <div className="rounded-2xl bg-muted/30 p-4">
+              <div className="font-semibold mb-2">Missing Values</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                {Object.entries(insights.missing_values).map(([col, val]) => (
+                  <div key={col} className="flex justify-between gap-4">
+                    <span className="text-muted-foreground">{col}</span>
+                    <span className="font-medium">{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {insights.numeric_summary && (
+            <div className="rounded-2xl bg-muted/30 p-4">
+              <div className="font-semibold mb-2">Numeric Summary</div>
+              <div className="space-y-2 text-sm">
+                {Object.entries(insights.numeric_summary).map(([col, s]) => (
+                  <div key={col} className="rounded-xl bg-background/40 p-3">
+                    <div className="font-medium mb-1">{col}</div>
+                    <div className="flex flex-wrap gap-4 text-muted-foreground">
+                      <span>Avg: {s.average}</span>
+                      <span>Min: {s.min}</span>
+                      <span>Max: {s.max}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="glass rounded-2xl p-4 border-l-4 border-destructive flex items-start gap-3 animate-scale-in">
@@ -458,32 +526,6 @@ function QueryPage() {
               <ResultsTable columns={result.columns} rows={result.rows} />
             </section>
           )}
-        </div>
-      )}
-
-      {insights?.success && (
-        <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            AI Dataset Insights
-          </h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <div className="text-sm text-muted-foreground">Rows</div>
-              <div className="text-2xl font-bold">{insights.rows_count}</div>
-            </div>
-
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <div className="text-sm text-muted-foreground">Columns</div>
-              <div className="text-2xl font-bold">{insights.columns_count}</div>
-            </div>
-
-            <div className="rounded-2xl bg-muted/40 p-4">
-              <div className="text-sm text-muted-foreground">Table</div>
-              <div className="text-lg font-semibold">{insights.table_name}</div>
-            </div>
-          </div>
         </div>
       )}
 

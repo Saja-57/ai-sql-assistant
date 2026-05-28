@@ -41,17 +41,21 @@ export type HistoryItem = {
   dataset_name?: string;
   question: string;
   generated_sql?: string;
-  result_summary?: string | {
-    columns?: string[];
-    rows?: any[][];
-    rows_count?: number;
-  };
+  result_summary?:
+    | string
+    | {
+        columns?: string[];
+        rows?: any[][];
+        rows_count?: number;
+      };
   created_at?: string;
 };
 
 export type DatasetInsights = {
   success: boolean;
   table_name?: string;
+  file_name?: string;
+  dataset_id?: number;
   rows_count?: number;
   columns_count?: number;
   columns?: string[];
@@ -82,30 +86,18 @@ function getAuthHeaders(): Record<string, string> {
   };
 }
 
-export async function generateSQL(
-  question: string,
-  datasetId: number
-): Promise<SqlResponse> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/generate-sql`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify({
-        question,
-        dataset_id: datasetId,
-      }),
-    });
+export function getSelectedDatasetId(): number | null {
+  const value = localStorage.getItem("selected_dataset_id");
 
-    return await response.json();
-  } catch (error) {
-    return {
-      success: false,
-      error: String(error),
-    };
-  }
+  if (!value) return null;
+
+  const id = Number(value);
+
+  return Number.isFinite(id) ? id : null;
+}
+
+export function setSelectedDatasetId(datasetId: number) {
+  localStorage.setItem("selected_dataset_id", String(datasetId));
 }
 
 export async function uploadCSV(file: File): Promise<UploadResponse> {
@@ -121,6 +113,40 @@ export async function uploadCSV(file: File): Promise<UploadResponse> {
       body: formData,
     });
 
+    const data: UploadResponse = await response.json();
+
+    if (data.success && data.dataset_id) {
+      setSelectedDatasetId(data.dataset_id);
+    }
+
+    return data;
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+
+export async function generateSQL(
+  question: string,
+  datasetId?: number
+): Promise<SqlResponse> {
+  try {
+    const finalDatasetId = datasetId ?? getSelectedDatasetId();
+
+    const response = await fetch(`${API_BASE_URL}/generate-sql`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({
+        question,
+        dataset_id: finalDatasetId,
+      }),
+    });
+
     return await response.json();
   } catch (error) {
     return {
@@ -130,9 +156,93 @@ export async function uploadCSV(file: File): Promise<UploadResponse> {
   }
 }
 
-export async function getSchema() {
+export async function getSchema(datasetId?: number) {
   try {
-    const response = await fetch(`${API_BASE_URL}/schema`, {
+    const finalDatasetId = datasetId ?? getSelectedDatasetId();
+
+    const url = finalDatasetId
+      ? `${API_BASE_URL}/schema?dataset_id=${finalDatasetId}`
+      : `${API_BASE_URL}/schema`;
+
+    const response = await fetch(url, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    return await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+
+export async function getDatasetInsights(
+  datasetId?: number
+): Promise<DatasetInsights> {
+  try {
+    const finalDatasetId = datasetId ?? getSelectedDatasetId();
+
+    const url = finalDatasetId
+      ? `${API_BASE_URL}/dataset-insights?dataset_id=${finalDatasetId}`
+      : `${API_BASE_URL}/dataset-insights`;
+
+    const response = await fetch(url, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    return await response.json();
+  } catch (error) {
+    return {
+      success: false,
+      error: String(error),
+    };
+  }
+}
+
+export async function getDatasets(): Promise<DatasetItem[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/datasets`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    const data = await response.json();
+
+    if (Array.isArray(data) && data.length > 0 && !getSelectedDatasetId()) {
+      setSelectedDatasetId(data[0].id);
+    }
+
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getHistory(): Promise<HistoryItem[]> {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history`, {
+      headers: {
+        ...getAuthHeaders(),
+      },
+    });
+
+    const data = await response.json();
+
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function getHistoryItem(historyId: number) {
+  try {
+    const response = await fetch(`${API_BASE_URL}/history/${historyId}`, {
       headers: {
         ...getAuthHeaders(),
       },
@@ -165,6 +275,7 @@ export async function loginUser(email: string, password: string) {
     if (data.access_token) {
       localStorage.setItem("access_token", data.access_token);
       localStorage.removeItem("guest_mode");
+      localStorage.removeItem("selected_dataset_id");
     }
 
     return data;
@@ -194,74 +305,20 @@ export async function signupUser(
       }),
     });
 
-    return await response.json();
+    const data = await response.json();
+
+    if (data.access_token) {
+      localStorage.setItem("access_token", data.access_token);
+      localStorage.removeItem("guest_mode");
+      localStorage.removeItem("selected_dataset_id");
+    }
+
+    return data;
   } catch (error) {
     return {
       success: false,
       error: String(error),
     };
-  }
-}
-
-export async function getHistory(): Promise<HistoryItem[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/history`, {
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
-
-    return await response.json();
-  } catch {
-    return [];
-  }
-}
-
-export async function getHistoryItem(historyId: number) {
-  try {
-    const response = await fetch(`${API_BASE_URL}/history/${historyId}`, {
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
-
-    return await response.json();
-  } catch (error) {
-    return {
-      success: false,
-      error: String(error),
-    };
-  }
-}
-
-export async function getDatasetInsights(): Promise<DatasetInsights> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/dataset-insights`, {
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
-
-    return await response.json();
-  } catch (error) {
-    return {
-      success: false,
-      error: String(error),
-    };
-  }
-}
-
-export async function getDatasets(): Promise<DatasetItem[]> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/datasets`, {
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
-
-    return await response.json();
-  } catch {
-    return [];
   }
 }
 
