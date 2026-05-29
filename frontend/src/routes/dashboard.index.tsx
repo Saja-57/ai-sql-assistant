@@ -2,26 +2,17 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
-  ChevronDown,
   Loader2,
   Sparkles,
   Upload,
   Database,
-  Trash2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useHistory } from "@/lib/history";
 import {
   generateSQL,
   uploadCSV,
-  getDatasets,
-  getDatasetInsights,
-  getSelectedDatasetId,
-  setSelectedDatasetId,
-  deleteDataset,
   type SqlResponse,
-  type DatasetInsights,
-  type DatasetItem,
 } from "@/lib/api";
 import { SQLBlock } from "@/components/SQLBlock";
 import { ResultsTable } from "@/components/ResultsTable";
@@ -43,86 +34,39 @@ function QueryPage() {
   const [uploadMsg, setUploadMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  const [datasets, setDatasets] = useState<DatasetItem[]>([]);
-  const [selectedDatasetIdState, setSelectedDatasetIdState] =
-    useState<number | null>(null);
-
   const [suggestions, setSuggestions] = useState<string[]>([]);
-  const [insights, setInsights] = useState<DatasetInsights | null>(null);
   const [generatedQuestion, setGeneratedQuestion] = useState("");
 
-  const [token, setToken] = useState<string | null>(null);
-  const [isGuest, setIsGuest] = useState(false);
+  const [currentDatasetName, setCurrentDatasetName] = useState("");
+  const [currentDatasetId, setCurrentDatasetId] = useState<number | null>(null);
+  const [currentRowsCount, setCurrentRowsCount] = useState<number | null>(null);
+  const [currentColumnsCount, setCurrentColumnsCount] = useState<number | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const selectedDataset = datasets.find(
-    (d) => d.id === selectedDatasetIdState
-  );
-
-  const selectedDatasetName =
-    selectedDataset?.file_name || selectedDataset?.table_name || "";
-
-  const hasDataset = datasets.length > 0 && selectedDatasetIdState !== null;
-
-  async function loadInsights(datasetId: number) {
-    const insightsRes = await getDatasetInsights(datasetId);
-
-    if (insightsRes.success) {
-      setInsights(insightsRes);
-      setSuggestions(insightsRes.suggested_questions || []);
-    } else {
-      setInsights(null);
-      setSuggestions([]);
-    }
-  }
-
-  const loadDatasets = async () => {
-    try {
-      const data = await getDatasets();
-      setDatasets(data);
-
-      if (!Array.isArray(data) || data.length === 0) {
-        setSelectedDatasetIdState(null);
-        setInsights(null);
-        setSuggestions([]);
-        return;
-      }
-
-      const savedId = getSelectedDatasetId();
-      const nextDataset = data.find((d) => d.id === savedId) || data[0];
-
-      setSelectedDatasetIdState(nextDataset.id);
-      setSelectedDatasetId(nextDataset.id);
-
-      await loadInsights(nextDataset.id);
-    } catch {
-      setDatasets([]);
-      setSelectedDatasetIdState(null);
-      setInsights(null);
-      setSuggestions([]);
-    }
-  };
+  const hasDataset = currentDatasetName.trim() !== "";
+  const selectedDatasetName = currentDatasetName || "your uploaded dataset";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
-    const savedToken =
-      localStorage.getItem("access_token") || localStorage.getItem("token");
-
-    setToken(savedToken);
-    setIsGuest(localStorage.getItem("guest_mode") === "true" && !savedToken);
 
     const saved = sessionStorage.getItem("query-page-state");
 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+
         setQuestion(parsed.question || "");
         setResult(parsed.result || null);
         setError(parsed.error || null);
         setUploadMsg(parsed.uploadMsg || null);
         setGeneratedQuestion(parsed.generatedQuestion || "");
+
+        setCurrentDatasetName(parsed.currentDatasetName || "");
+        setCurrentDatasetId(parsed.currentDatasetId ?? null);
+        setCurrentRowsCount(parsed.currentRowsCount ?? null);
+        setCurrentColumnsCount(parsed.currentColumnsCount ?? null);
+        setSuggestions(parsed.suggestions || []);
       } catch {
         sessionStorage.removeItem("query-page-state");
       }
@@ -137,17 +81,6 @@ function QueryPage() {
   }, []);
 
   useEffect(() => {
-    if (!isGuest && token) {
-      loadDatasets();
-    } else {
-      setDatasets([]);
-      setSelectedDatasetIdState(null);
-      setInsights(null);
-      setSuggestions([]);
-    }
-  }, [token, isGuest]);
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
 
     sessionStorage.setItem(
@@ -158,16 +91,32 @@ function QueryPage() {
         error,
         uploadMsg,
         generatedQuestion,
+        currentDatasetName,
+        currentDatasetId,
+        currentRowsCount,
+        currentColumnsCount,
+        suggestions,
       })
     );
-  }, [question, result, error, uploadMsg, generatedQuestion]);
+  }, [
+    question,
+    result,
+    error,
+    uploadMsg,
+    generatedQuestion,
+    currentDatasetName,
+    currentDatasetId,
+    currentRowsCount,
+    currentColumnsCount,
+    suggestions,
+  ]);
 
   const run = async (q?: string) => {
     const ques = (q ?? question).trim();
 
     if (!ques) return;
 
-    if (!selectedDatasetIdState) {
+    if (!hasDataset) {
       setResult(null);
       setError("Please upload a CSV file before generating SQL.");
       return;
@@ -178,7 +127,7 @@ function QueryPage() {
     setResult(null);
 
     try {
-      const res = await generateSQL(ques, selectedDatasetIdState);
+      const res = await generateSQL(ques, currentDatasetId as any);
 
       if (res.sql && FORBIDDEN.test(res.sql)) {
         setError(t.safetyNote);
@@ -217,73 +166,24 @@ function QueryPage() {
     setUploading(false);
 
     if (r.success) {
-      setUploadMsg(`${t.uploaded} (${r.file_name || r.table_name || file.name})`);
+      const fileName = r.file_name || r.table_name || file.name;
 
-      if (r.dataset_id) {
-        setSelectedDatasetIdState(r.dataset_id);
-        setSelectedDatasetId(r.dataset_id);
-      }
+      setUploadMsg(`${t.uploaded} (${fileName})`);
+
+      setCurrentDatasetName(fileName);
+      setCurrentDatasetId(r.dataset_id ?? null);
+      setCurrentRowsCount(r.rows_count ?? null);
+      setCurrentColumnsCount(r.columns?.length ?? null);
 
       if (r.suggested_questions) {
         setSuggestions(r.suggested_questions);
-      }
-
-      await loadDatasets();
-
-      if (r.dataset_id) {
-        await loadInsights(r.dataset_id);
+      } else {
+        setSuggestions([]);
       }
     } else {
       setUploadMsg(r.error || r.message || t.error);
     }
   };
-
-  const handleDatasetChange = async (value: string) => {
-  if (!value) return;
-
-  const nextId = Number(value);
-
-  if (Number.isNaN(nextId)) return;
-
-  setSelectedDatasetIdState(nextId);
-  setSelectedDatasetId(nextId);
-
-  setQuestion("");
-  setResult(null);
-  setError(null);
-  setGeneratedQuestion("");
-  setInsights(null);
-  setSuggestions([]);
-
-  if (typeof window !== "undefined") {
-    sessionStorage.removeItem("query-page-state");
-  }
-
-  await loadInsights(nextId);
-};
-
-const handleDeleteDataset = async () => {
-  if (!selectedDatasetIdState) return;
-
-  const ok = window.confirm("Delete this dataset?");
-  if (!ok) return;
-
-  const res = await deleteDataset(selectedDatasetIdState);
-
-  if (!res.success) {
-    setError(res.error || "Failed to delete dataset");
-    return;
-  }
-
-  setQuestion("");
-  setResult(null);
-  setError(null);
-  setGeneratedQuestion("");
-  setInsights(null);
-  setSuggestions([]);
-
-  await loadDatasets();
-};
 
   const clearQueryState = () => {
     setQuestion("");
@@ -296,9 +196,8 @@ const handleDeleteDataset = async () => {
     }
   };
 
-  // ✅ Insights קומפקטי — רק 3 מספרים בשורה אחת
   const CompactInsights = () => {
-    if (!insights?.success) return null;
+    if (!hasDataset) return null;
 
     return (
       <div className="glass rounded-2xl p-4 shadow-card">
@@ -308,32 +207,20 @@ const handleDeleteDataset = async () => {
             AI Insights
           </h2>
           <span className="text-xs text-muted-foreground">
-            {insights.file_name || selectedDatasetName}
+            {selectedDatasetName}
           </span>
         </div>
 
         <div className="flex gap-3">
           <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
             <div className="text-xs text-muted-foreground">Rows</div>
-            <div className="text-lg font-bold">{insights.rows_count ?? "-"}</div>
+            <div className="text-lg font-bold">{currentRowsCount ?? "-"}</div>
           </div>
+
           <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
             <div className="text-xs text-muted-foreground">Columns</div>
-            <div className="text-lg font-bold">
-              {insights.columns_count ?? insights.columns?.length ?? "-"}
-            </div>
+            <div className="text-lg font-bold">{currentColumnsCount ?? "-"}</div>
           </div>
-          {insights.numeric_summary &&
-            Object.keys(insights.numeric_summary).length > 0 && (
-              <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
-                <div className="text-xs text-muted-foreground">
-                  Avg {Object.keys(insights.numeric_summary)[0]}
-                </div>
-                <div className="text-lg font-bold">
-                  {Object.values(insights.numeric_summary)[0].average.toFixed(1)}
-                </div>
-              </div>
-            )}
         </div>
       </div>
     );
@@ -378,7 +265,6 @@ const handleDeleteDataset = async () => {
         </div>
       </header>
 
-      {/* תיבת השאלה */}
       <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -387,37 +273,11 @@ const handleDeleteDataset = async () => {
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-80">
-  <div className="relative flex-1">
-    <select
-      value={selectedDatasetIdState ?? ""}
-      onChange={(e) => handleDatasetChange(e.target.value)}
-      className="w-full appearance-none rounded-xl glass px-4 py-2.5 pr-10 text-sm outline-none"
-    >
-      {datasets.length === 0 && (
-        <option value="">No dataset uploaded yet</option>
-      )}
-
-      {datasets.map((dataset) => (
-        <option key={dataset.id} value={String(dataset.id)}>
-          {dataset.file_name || dataset.table_name}
-        </option>
-      ))}
-    </select>
-
-    <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-  </div>
-
-  {selectedDatasetIdState && (
-    <button
-      type="button"
-      onClick={handleDeleteDataset}
-      className="px-3 py-2.5 rounded-xl glass text-sm hover:bg-destructive/10 hover:text-destructive transition"
-      title="Delete dataset"
-    >
-      <Trash2 className="w-4 h-4" />
-    </button>
-  )}
-</div>
+            <div className="rounded-xl glass px-4 py-2.5 text-sm w-full">
+              <span className="text-muted-foreground">Current dataset: </span>
+              <strong>{currentDatasetName || "Upload a CSV to start"}</strong>
+            </div>
+          </div>
         </div>
 
         <div className="flex items-start gap-3">
@@ -506,10 +366,8 @@ const handleDeleteDataset = async () => {
         </div>
       </div>
 
-      {/* ✅ לפני query: insights קומפקטי */}
       {!result && !loading && !error && <CompactInsights />}
 
-      {/* שגיאה */}
       {error && (
         <div className="glass rounded-2xl p-4 border-l-4 border-destructive flex items-start gap-3 animate-scale-in">
           <AlertCircle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
@@ -520,7 +378,6 @@ const handleDeleteDataset = async () => {
         </div>
       )}
 
-      {/* לודינג */}
       {loading && (
         <div className="glass rounded-2xl p-6 space-y-3">
           <div className="h-4 w-1/3 bg-muted rounded shimmer" />
@@ -529,7 +386,6 @@ const handleDeleteDataset = async () => {
         </div>
       )}
 
-      {/* ✅ אחרי query: SQL → תוצאות → insights קומפקטי */}
       {result?.sql && (
         <div className="space-y-6">
           <section>
@@ -560,17 +416,21 @@ const handleDeleteDataset = async () => {
             </section>
           )}
 
-          {/* ✅ Insights קומפקטי מתחת לתוצאות */}
           <CompactInsights />
         </div>
       )}
 
-      {!result && !loading && !error && !insights?.success && (
+      {!result && !loading && !error && !hasDataset && (
         <div className="glass rounded-3xl p-12 text-center text-muted-foreground">
           <Sparkles className="w-8 h-8 mx-auto mb-3 text-primary/60" />
-          {hasDataset
-            ? "Ask a question to generate SQL and view results."
-            : "Upload a CSV file to start analyzing your data."}
+          Upload a CSV file to start analyzing your data.
+        </div>
+      )}
+
+      {!result && !loading && !error && hasDataset && (
+        <div className="glass rounded-3xl p-12 text-center text-muted-foreground">
+          <Sparkles className="w-8 h-8 mx-auto mb-3 text-primary/60" />
+          Ask a question to generate SQL and view results.
         </div>
       )}
     </div>

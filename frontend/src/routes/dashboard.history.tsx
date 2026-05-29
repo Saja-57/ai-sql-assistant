@@ -148,9 +148,18 @@ function HistoryPage() {
                       </span>
                     </div>
 
-                    <div className="font-semibold text-sm truncate">
-                      {it.question}
-                    </div>
+                    <div className="space-y-1">
+  <div className="text-xs text-muted-foreground">
+    Dataset:{" "}
+    <span className="font-medium text-foreground">
+      {getDatasetName(it)}
+    </span>
+  </div>
+
+  <div className="font-semibold text-sm truncate">
+    {it.question}
+  </div>
+</div>
                   </button>
 
                   <div className="flex items-center gap-2">
@@ -160,16 +169,16 @@ function HistoryPage() {
                       className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg glass text-xs font-semibold"
                     >
                       {isOpen ? (
-                        <>
-                          <ChevronUp className="w-3.5 h-3.5" />
-                          Hide
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="w-3.5 h-3.5" />
-                          View answer
-                        </>
-                      )}
+  <>
+    <ChevronUp className="w-3.5 h-3.5" />
+    Hide SQL & Result
+  </>
+) : (
+  <>
+    <ChevronDown className="w-3.5 h-3.5" />
+    View SQL & Result
+  </>
+)}
                     </button>
 
                     <button
