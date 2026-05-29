@@ -141,7 +141,7 @@ export async function generateSQL(
   datasetId?: number
 ): Promise<SqlResponse> {
   try {
-    const finalDatasetId = datasetId ?? getSelectedDatasetId();
+    const finalDatasetId = datasetId ?? getSelectedDatasetId() ?? 0;
 
     const response = await fetch(`${API_BASE_URL}/generate-sql`, {
       method: "POST",
