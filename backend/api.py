@@ -580,24 +580,21 @@ def get_datasets(
         for item in datasets
     ]
 
-
 @app.post("/upload-csv")
 async def upload_csv(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    temp_csv_path = None
+
     try:
         is_guest = current_user.get("guest", False)
         user_id = current_user.get("user_id")
-                 
-       # login_error = require_login(current_user)
-       # if login_error:
-       #     return login_error
-       
+
         logger.info(
-        f"UPLOAD START | guest={is_guest} | user_id={user_id} | filename={file.filename}"
-    )
+            f"UPLOAD START | guest={is_guest} | user_id={user_id} | filename={file.filename}"
+        )
 
         if not file.filename.lower().endswith(".csv"):
             return {
@@ -606,17 +603,17 @@ async def upload_csv(
             }
 
         if is_guest:
-         user_dir = os.path.join(DATA_DIR, "guest_temp")
-         table_prefix = "guest"
-         database_path = os.path.join(DATA_DIR, "guest_temp.db")
+            user_dir = os.path.join(DATA_DIR, "guest_temp")
+            table_prefix = "guest"
+            database_path = os.path.join(DATA_DIR, "guest_temp.db")
         else:
-         user_dir = os.path.join(DATA_DIR, f"user_{user_id}")
-         table_prefix = f"user_{user_id}"
-         database_path = get_database_path(user_id)
+            user_dir = os.path.join(DATA_DIR, f"user_{user_id}")
+            table_prefix = f"user_{user_id}"
+            database_path = get_database_path(user_id)
 
-         os.makedirs(user_dir, exist_ok=True)
+        os.makedirs(user_dir, exist_ok=True)
 
-         temp_csv_path = os.path.join(user_dir, file.filename)
+        temp_csv_path = os.path.join(user_dir, file.filename)
 
         with open(temp_csv_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -640,47 +637,42 @@ async def upload_csv(
         dataset_id = None
 
         if not is_guest:
-
-
-        # ✅ FIX: חיפוש לפי original_file_name למניעת כפילויות
-          dataset = (
-            db.query(Dataset)
-            .filter(
-                Dataset.user_id == current_user["user_id"],
-                Dataset.original_file_name == file.filename,
+            dataset = (
+                db.query(Dataset)
+                .filter(
+                    Dataset.user_id == current_user["user_id"],
+                    Dataset.original_file_name == file.filename,
+                )
+                .first()
             )
-            .first()
-        )
 
-        if dataset:
-            dataset.table_name = table_name
-            dataset.rows_count = len(df)
-            dataset.columns_json = json.dumps(list(df.columns), ensure_ascii=False)
-        else:
-            dataset = Dataset(
-                user_id=current_user["user_id"],
-                original_file_name=file.filename,
-                table_name=table_name,
-                rows_count=len(df),
-                columns_json=json.dumps(list(df.columns), ensure_ascii=False),
-            )
-            db.add(dataset)
+            if dataset:
+                dataset.table_name = table_name
+                dataset.rows_count = len(df)
+                dataset.columns_json = json.dumps(list(df.columns), ensure_ascii=False)
+            else:
+                dataset = Dataset(
+                    user_id=current_user["user_id"],
+                    original_file_name=file.filename,
+                    table_name=table_name,
+                    rows_count=len(df),
+                    columns_json=json.dumps(list(df.columns), ensure_ascii=False),
+                )
+                db.add(dataset)
 
-        db.commit()
-        db.refresh(dataset)
-
-        dataset_id = dataset.id
+            db.commit()
+            db.refresh(dataset)
+            dataset_id = dataset.id
 
         suggestions = generate_suggested_questions(
-    file.filename,
-    list(df.columns),
-)
+            file.filename,
+            list(df.columns),
+        )
 
         return {
             "success": True,
             "dataset_id": dataset_id,
             "table_name": table_name,
-            # ✅ FIX: מחזיר את שם הקובץ המקורי בלי prefix
             "file_name": file.filename,
             "columns": list(df.columns),
             "rows_count": len(df),
@@ -694,6 +686,11 @@ async def upload_csv(
             "success": False,
             "error": str(e),
         }
+
+    finally:
+        if temp_csv_path and os.path.exists(temp_csv_path):
+            os.remove(temp_csv_path)
+            
 
 
 @app.post("/generate-sql")
