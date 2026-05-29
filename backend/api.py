@@ -16,7 +16,6 @@ from database import engine, get_db
 from models import Base, QueryHistory, User, Dataset
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from database import Dataset
 
 from passlib.context import CryptContext
 from jose import jwt, JWTError
