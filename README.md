@@ -1,45 +1,71 @@
-# AI SQL Assistant - Full Stack Project
+# AI SQL Assistant - Full Stack AI Data Platform
 
-## Project Overview
+## Overview
 
-AI SQL Assistant is a full-stack AI-powered platform designed to transform natural language questions into executable SQL queries.
+AI SQL Assistant is a full-stack AI-powered platform that enables users to interact with their datasets using natural language.
 
-The system enables users to upload datasets, analyze database schemas, generate SQL queries using OpenAI APIs, execute queries on connected databases, and interact with data through an intuitive dashboard interface.
+Users can upload CSV datasets, explore schemas, generate SQL queries using AI, execute queries safely on uploaded data, and analyze results through an interactive dashboard.
 
-The project combines modern frontend technologies with scalable backend architecture, providing a seamless AI-driven data exploration experience.
+The platform supports multilingual querying in English, Hebrew, and Arabic, while validating generated SQL queries against the uploaded dataset structure to reduce invalid or hallucinated queries.
 
-### Key Capabilities
+This project combines modern frontend technologies, scalable backend services, AI integration, authentication systems, and containerized infrastructure into a unified data exploration platform.
 
-- Natural Language to SQL generation
-- Interactive dashboard interface
-- Dataset upload and schema analysis
-- User authentication and session management
-- Query execution and history tracking
-- RESTful API architecture
-- Dockerized development environment
+---
+
+## Live Demo
+
+Frontend:
+https://ai-sql-assistant-orpin.vercel.app/
+
+---
+
+## Main Features
+
+* AI-powered Text-to-SQL generation
+* Dynamic CSV upload & schema extraction
+* Dataset-aware SQL validation
+* Prevention of hallucinated SQL generation
+* English / Hebrew / Arabic query support
+* JWT-based authentication system
+* Login / Signup + Guest mode
+* Query execution & history tracking
+* Interactive dashboard interface
+* Dataset selector & schema viewer
+* RESTful API architecture
+* Dockerized full-stack environment
+* Redis integration
+* Logging & monitoring support
 
 ---
 
 ## Tech Stack
 
 ### Frontend
-- React
-- Vite
-- TypeScript
+
+* React
+* TypeScript
+* Vite
+* TanStack Router
 
 ### Backend
-- FastAPI
-- Python
-- PostgreSQL
-- REST APIs
+
+* FastAPI
+* Python
+* PostgreSQL
+* SQLite
+* REST APIs
+* JWT Authentication
 
 ### Infrastructure
-- Docker
-- Redis
+
+* Docker
+* Docker Compose
+* Redis
 
 ### AI Integration
-- OpenAI API
-- NLP-based Text-to-SQL generation
+
+* OpenAI API
+* NLP-based Text-to-SQL generation
 
 ---
 
@@ -47,21 +73,42 @@ The project combines modern frontend technologies with scalable backend architec
 
 ```text
 ai-sql-full-project/
-├── frontend/   # React/Vite frontend application
-└── backend/    # FastAPI backend services
+├── frontend/   # React frontend application
+├── backend/    # FastAPI backend services
+└── docker-compose.yml
 ```
 
 ---
 
-## Run Backend
+## Architecture Overview
+
+```text
+Frontend (React + TypeScript)
+        ↓
+REST API Requests
+        ↓
+Backend (FastAPI + Python)
+        ↓
+OpenAI API + SQL Validation Layer
+        ↓
+PostgreSQL / SQLite Databases
+        ↓
+Redis Cache & Session Storage
+```
+
+---
+
+## Running the Backend
 
 ```bash
 cd backend
+
 pip install -r requirements.txt
+
 python -m uvicorn api:app --reload --host 127.0.0.1 --port 8001
 ```
 
-Backend API documentation:
+Backend API Documentation:
 
 ```text
 http://127.0.0.1:8001/docs
@@ -69,13 +116,15 @@ http://127.0.0.1:8001/docs
 
 ---
 
-## Run Frontend
+## Running the Frontend
 
 Open a second terminal:
 
 ```bash
 cd frontend
+
 npm install
+
 npm run dev
 ```
 
@@ -87,27 +136,53 @@ http://localhost:8080
 
 ---
 
-## Important
+## Environment Variables
 
-Do not upload sensitive or generated folders/files to GitHub:
+Example `.env` variables:
+
+```env
+OPENAI_API_KEY=your_key
+DATABASE_URL=your_database_url
+SECRET_KEY=your_secret
+REDIS_URL=redis://localhost:6379
+```
+
+---
+
+## Git Ignore
+
+Do not upload sensitive or generated files to GitHub:
 
 ```text
 node_modules/
 __pycache__/
 .venv/
 .env
+dist/
 ```
 
-These files are ignored using `.gitignore`.
+These files should remain inside `.gitignore`.
 
 ---
 
 ## Future Improvements
 
-- CI/CD pipeline integration
-- Advanced schema analysis
-- AI-powered query explanations
-- Query optimization suggestions
-- Data visualization dashboards
-- Role-based authentication
-- Cloud deployment with AWS
+* Persistent dataset storage
+* AI-generated visualizations
+* Advanced analytics dashboard
+* Query optimization suggestions
+* CI/CD pipeline integration
+* Production-grade monitoring
+* Role-based authentication
+* Cloud deployment with AWS
+* Elasticsearch integration
+* Kubernetes orchestration
+
+---
+
+## Author
+
+Saja Abdalla
+
+B.Sc. Information Systems (AI Track)
+University of Haifa
