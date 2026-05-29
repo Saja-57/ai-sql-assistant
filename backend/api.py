@@ -289,24 +289,28 @@ Database schema:
 {schema}
 
 Rules:
+
 - Return ONLY SQL.
 - Use SQLite syntax.
 - ONLY SELECT queries are allowed.
-- Do not guess meanings from similar column names.
-- If the user question is completely unrelated to the dataset,
-  return:
-  SELECT 'DATASET_MISMATCH' AS message;
-- Only use columns that clearly match the user intent.
-- Never use DELETE, DROP, UPDATE, INSERT, ALTER, CREATE.
+- Never use DELETE, DROP, UPDATE, INSERT, ALTER, CREATE, TRUNCATE.
 - Do not explain.
 - Do not use markdown.
 - Use the table names exactly as they appear in the schema.
 - Always fully qualify column names when using JOINs.
 - When using JOINs, avoid ambiguous column names.
-- If the question does not match the uploaded dataset schema,
-  return exactly:
-  SELECT 'DATASET_MISMATCH' AS message;
-
+- Do not invent tables or columns that do not exist in the schema.
+- The user is asking about the currently selected uploaded dataset.
+- Do NOT require the user to mention the table name.
+- If the user asks how many rows, records, items, entries, cars, products, users, people, or objects exist, use COUNT(*).
+- If the user asks to show data, list data, preview data, sample rows, first rows, or all rows, use SELECT *.
+- Use LIMIT when appropriate for previews or examples.
+- If the question sounds related to the uploaded dataset, generate the safest valid SELECT query.
+- Only return DATASET_MISMATCH if the question is clearly unrelated to any possible dataset content.
+- General dataset questions like "how many rows", "show data", "preview", "what columns exist", or "average value" are considered valid dataset questions.
+- If the user asks about columns, use the schema to identify the closest matching valid columns.
+- Prefer safe simple queries over returning DATASET_MISMATCH.
+- If the query cannot be answered exactly, generate the closest safe SELECT query using existing schema columns.
 User question:
 {question}
 """
@@ -583,14 +587,16 @@ async def upload_csv(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        login_error = require_login(current_user)
-
-        if login_error:
-            return login_error
-
+        is_guest = current_user.get("guest", False)
+        user_id = current_user.get("user_id")
+                 
+       # login_error = require_login(current_user)
+       # if login_error:
+       #     return login_error
+       
         logger.info(
-            f"UPLOAD START | user_id={current_user['user_id']} | filename={file.filename}"
-        )
+        f"UPLOAD START | guest={is_guest} | user_id={user_id} | filename={file.filename}"
+    )
 
         if not file.filename.lower().endswith(".csv"):
             return {
@@ -598,10 +604,18 @@ async def upload_csv(
                 "error": "Only CSV files are allowed",
             }
 
-        user_dir = os.path.join(DATA_DIR, f"user_{current_user['user_id']}")
-        os.makedirs(user_dir, exist_ok=True)
+        if is_guest:
+         user_dir = os.path.join(DATA_DIR, "guest_temp")
+         table_prefix = "guest"
+         database_path = os.path.join(DATA_DIR, "guest_temp.db")
+        else:
+         user_dir = os.path.join(DATA_DIR, f"user_{user_id}")
+         table_prefix = f"user_{user_id}"
+         database_path = get_database_path(user_id)
 
-        temp_csv_path = os.path.join(user_dir, file.filename)
+         os.makedirs(user_dir, exist_ok=True)
+
+         temp_csv_path = os.path.join(user_dir, file.filename)
 
         with open(temp_csv_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -609,9 +623,7 @@ async def upload_csv(
         df = pd.read_csv(temp_csv_path)
 
         safe_name = clean_table_name(file.filename)
-        table_name = f"user_{current_user['user_id']}_{safe_name}"
-
-        database_path = get_database_path(current_user["user_id"])
+        table_name = f"{table_prefix}_{safe_name}"
 
         conn = sqlite3.connect(database_path)
 
@@ -624,8 +636,13 @@ async def upload_csv(
 
         conn.close()
 
+        dataset_id = None
+
+        if not is_guest:
+
+
         # ✅ FIX: חיפוש לפי original_file_name למניעת כפילויות
-        dataset = (
+          dataset = (
             db.query(Dataset)
             .filter(
                 Dataset.user_id == current_user["user_id"],
@@ -651,6 +668,8 @@ async def upload_csv(
         db.commit()
         db.refresh(dataset)
 
+        dataset_id = dataset.id
+
         suggestions = generate_suggested_questions(
     file.filename,
     list(df.columns),
@@ -658,7 +677,7 @@ async def upload_csv(
 
         return {
             "success": True,
-            "dataset_id": dataset.id,
+            "dataset_id": dataset_id,
             "table_name": table_name,
             # ✅ FIX: מחזיר את שם הקובץ המקורי בלי prefix
             "file_name": file.filename,
@@ -683,33 +702,34 @@ def generate_sql(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        login_error = require_login(current_user)
+        is_guest = current_user.get("guest", False)
+        user_id = current_user.get("user_id")
 
-        if login_error:
-            return login_error
-
-        dataset = (
-            db.query(Dataset)
-            .filter(
-                Dataset.id == request.dataset_id,
-                Dataset.user_id == current_user["user_id"],
+        if is_guest:
+            dataset_id = None
+            dataset_name = "Guest uploaded dataset"
+            database_path = os.path.join(DATA_DIR, "guest_temp.db")
+        else:
+            dataset = (
+                db.query(Dataset)
+                .filter(
+                    Dataset.id == request.dataset_id,
+                    Dataset.user_id == user_id,
+                )
+                .first()
             )
-            .first()
-        )
 
-        if not dataset:
-            return {
-                "success": False,
-                "error": "Dataset not found for this user"
-            }
+            if not dataset:
+                return {
+                    "success": False,
+                    "error": "Dataset not found for this user"
+                }
 
-        database_path = get_database_path(
-            current_user["user_id"]
-        )
+            dataset_id = dataset.id
+            dataset_name = dataset.original_file_name
+            database_path = get_database_path(user_id)
 
-        schema = get_database_schema_text(
-            database_path
-        )
+        schema = get_database_schema_text(database_path)
 
         sql = generate_sql_with_ai(
             request.question,
@@ -733,30 +753,35 @@ def generate_sql(
                 "error": result["error"],
             }
 
-        result_summary = build_result_summary(
-            result["columns"],
-            result["rows"]
-        )
+        history_id = None
 
-        history = QueryHistory(
-            user_id=current_user["user_id"],
-            dataset_id=dataset.id,
-            question=request.question,
-            generated_sql=sql,
-            result_summary=result_summary,
-            dataset_name=dataset.original_file_name,
-        )
+        if not is_guest:
+            result_summary = build_result_summary(
+                result["columns"],
+                result["rows"]
+            )
 
-        db.add(history)
-        db.commit()
-        db.refresh(history)
+            history = QueryHistory(
+                user_id=user_id,
+                dataset_id=dataset_id,
+                question=request.question,
+                generated_sql=sql,
+                result_summary=result_summary,
+                dataset_name=dataset_name,
+            )
+
+            db.add(history)
+            db.commit()
+            db.refresh(history)
+
+            history_id = history.id
 
         return {
             "success": True,
-            "history_id": history.id,
+            "history_id": history_id,
             "question": request.question,
-            "dataset_id": dataset.id,
-            "dataset_name": dataset.original_file_name,
+            "dataset_id": dataset_id,
+            "dataset_name": dataset_name,
             "sql": sql,
             "columns": result["columns"],
             "rows": result["rows"],
@@ -938,3 +963,28 @@ def dataset_insights(
             "success": False,
             "error": str(e),
         }
+    
+@app.delete("/datasets/{dataset_id}")
+def delete_dataset(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+ ):
+    dataset = db.query(Dataset).filter(
+        Dataset.id == dataset_id,
+        Dataset.user_id == current_user["user_id"]
+    ).first()
+
+    if not dataset:
+        return {
+            "success": False,
+            "error": "Dataset not found"
+        }
+
+    db.delete(dataset)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Dataset deleted successfully"
+    }

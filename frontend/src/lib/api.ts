@@ -327,3 +327,17 @@ export function logoutUser() {
   localStorage.removeItem("guest_mode");
   localStorage.removeItem("selected_dataset_id");
 }
+
+export async function deleteDataset(datasetId: number) {
+  const token =
+    localStorage.getItem("access_token") || localStorage.getItem("token");
+
+  const response = await fetch(`${API_BASE_URL}/datasets/${datasetId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return response.json();
+}

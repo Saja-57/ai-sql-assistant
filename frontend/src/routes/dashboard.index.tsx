@@ -7,6 +7,7 @@ import {
   Sparkles,
   Upload,
   Database,
+  Trash2,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useHistory } from "@/lib/history";
@@ -17,6 +18,7 @@ import {
   getDatasetInsights,
   getSelectedDatasetId,
   setSelectedDatasetId,
+  deleteDataset,
   type SqlResponse,
   type DatasetInsights,
   type DatasetItem,
@@ -236,24 +238,52 @@ function QueryPage() {
     }
   };
 
-  const handleDatasetChange = async (nextId: number) => {
-    if (!Number.isFinite(nextId)) return;
+  const handleDatasetChange = async (value: string) => {
+  if (!value) return;
 
-    setSelectedDatasetIdState(nextId);
-    setSelectedDatasetId(nextId);
-    setResult(null);
-    setError(null);
-    setQuestion("");
-    setGeneratedQuestion("");
-    setInsights(null);
-    setSuggestions([]);
+  const nextId = Number(value);
 
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("query-page-state");
-    }
+  if (Number.isNaN(nextId)) return;
 
-    await loadInsights(nextId);
-  };
+  setSelectedDatasetIdState(nextId);
+  setSelectedDatasetId(nextId);
+
+  setQuestion("");
+  setResult(null);
+  setError(null);
+  setGeneratedQuestion("");
+  setInsights(null);
+  setSuggestions([]);
+
+  if (typeof window !== "undefined") {
+    sessionStorage.removeItem("query-page-state");
+  }
+
+  await loadInsights(nextId);
+};
+
+const handleDeleteDataset = async () => {
+  if (!selectedDatasetIdState) return;
+
+  const ok = window.confirm("Delete this dataset?");
+  if (!ok) return;
+
+  const res = await deleteDataset(selectedDatasetIdState);
+
+  if (!res.success) {
+    setError(res.error || "Failed to delete dataset");
+    return;
+  }
+
+  setQuestion("");
+  setResult(null);
+  setError(null);
+  setGeneratedQuestion("");
+  setInsights(null);
+  setSuggestions([]);
+
+  await loadDatasets();
+};
 
   const clearQueryState = () => {
     setQuestion("");
@@ -356,25 +386,38 @@ function QueryPage() {
             Dataset
           </div>
 
-          <div className="relative w-full md:w-80">
-            <select
-              value={selectedDatasetIdState ?? ""}
-              onChange={(e) => handleDatasetChange(Number(e.target.value))}
-              className="w-full appearance-none rounded-xl glass px-4 py-2.5 pr-10 text-sm outline-none"
-            >
-              {datasets.length === 0 && (
-                <option value="">No dataset uploaded yet</option>
-              )}
+          <div className="flex items-center gap-2 w-full md:w-80">
+  <div className="relative flex-1">
+    <select
+      value={selectedDatasetIdState ?? ""}
+      onChange={(e) => handleDatasetChange(e.target.value)}
+      className="w-full appearance-none rounded-xl glass px-4 py-2.5 pr-10 text-sm outline-none"
+    >
+      {datasets.length === 0 && (
+        <option value="">No dataset uploaded yet</option>
+      )}
 
-              {datasets.map((dataset) => (
-                <option key={dataset.id} value={dataset.id}>
-                  {dataset.file_name || dataset.table_name}
-                </option>
-              ))}
-            </select>
+      {datasets.map((dataset) => (
+        <option key={dataset.id} value={String(dataset.id)}>
+          {dataset.file_name || dataset.table_name}
+        </option>
+      ))}
+    </select>
 
-            <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
-          </div>
+    <ChevronDown className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground" />
+  </div>
+
+  {selectedDatasetIdState && (
+    <button
+      type="button"
+      onClick={handleDeleteDataset}
+      className="px-3 py-2.5 rounded-xl glass text-sm hover:bg-destructive/10 hover:text-destructive transition"
+      title="Delete dataset"
+    >
+      <Trash2 className="w-4 h-4" />
+    </button>
+  )}
+</div>
         </div>
 
         <div className="flex items-start gap-3">
