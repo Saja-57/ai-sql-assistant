@@ -690,7 +690,7 @@ async def upload_csv(
     finally:
         if temp_csv_path and os.path.exists(temp_csv_path):
             os.remove(temp_csv_path)
-            
+
 
 
 @app.post("/generate-sql")
@@ -879,35 +879,78 @@ def dataset_insights(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    login_error = require_login(current_user)
-
-    if login_error:
-        return login_error
-
-    dataset = (
-        db.query(Dataset)
-        .filter(
-            Dataset.id == dataset_id,
-            Dataset.user_id == current_user["user_id"],
-        )
-        .first()
-    )
-
-    if not dataset:
-        return {
-            "success": False,
-            "error": "Dataset not found for this user",
-        }
-
-    database_path = get_database_path(current_user["user_id"])
-
     try:
-        conn = sqlite3.connect(database_path)
-        df = pd.read_sql_query(
-            f'SELECT * FROM "{dataset.table_name}"',
-            conn,
-        )
-        conn.close()
+        is_guest = current_user.get("guest", False)
+        user_id = current_user.get("user_id")
+
+        if is_guest:
+            database_path = os.path.join(DATA_DIR, "guest_temp.db")
+
+            if not os.path.exists(database_path):
+                return {
+                    "success": False,
+                    "error": "Guest database not found",
+                }
+
+            conn = sqlite3.connect(database_path)
+
+            tables_df = pd.read_sql_query(
+                "SELECT name FROM sqlite_master WHERE type='table'",
+                conn,
+            )
+
+            if tables_df.empty:
+                conn.close()
+                return {
+                    "success": False,
+                    "error": "No guest dataset found",
+                }
+
+            table_name = tables_df.iloc[0]["name"]
+
+            df = pd.read_sql_query(
+                f'SELECT * FROM "{table_name}"',
+                conn,
+            )
+
+            conn.close()
+
+            file_name = table_name.replace("guest_", "", 1)
+
+        else:
+            login_error = require_login(current_user)
+
+            if login_error:
+                return login_error
+
+            dataset = (
+                db.query(Dataset)
+                .filter(
+                    Dataset.id == dataset_id,
+                    Dataset.user_id == user_id,
+                )
+                .first()
+            )
+
+            if not dataset:
+                return {
+                    "success": False,
+                    "error": "Dataset not found for this user",
+                }
+
+            database_path = get_database_path(user_id)
+
+            conn = sqlite3.connect(database_path)
+
+            df = pd.read_sql_query(
+                f'SELECT * FROM "{dataset.table_name}"',
+                conn,
+            )
+
+            conn.close()
+
+            table_name = dataset.table_name
+            file_name = dataset.original_file_name
 
         columns = list(df.columns)
 
@@ -942,16 +985,15 @@ def dataset_insights(
             }
 
         suggested_questions = generate_suggested_questions(
-    dataset.original_file_name,
-    columns,
-)
+            file_name,
+            columns,
+        )
 
         return {
             "success": True,
-            "dataset_id": dataset.id,
-            "table_name": dataset.table_name,
-            # ✅ FIX: מחזיר שם קובץ מקורי בלי prefix
-            "file_name": dataset.original_file_name,
+            "dataset_id": None if is_guest else dataset.id,
+            "table_name": table_name,
+            "file_name": file_name,
             "rows_count": int(len(df)),
             "columns_count": int(len(columns)),
             "columns": columns,
@@ -1001,9 +1043,46 @@ def get_dataset_schema(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    is_guest = current_user.get("guest", False)
+    user_id = current_user.get("user_id")
+
+    if is_guest:
+        database_path = os.path.join(DATA_DIR, "guest_temp.db")
+
+        if not os.path.exists(database_path):
+            return {"success": False, "error": "Guest database not found"}
+
+        conn = sqlite3.connect(database_path)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+
+        schema = {}
+
+        for table in tables:
+            cursor.execute(f'PRAGMA table_info("{table}")')
+            schema[table] = [
+                {
+                    "column_name": row[1],
+                    "data_type": row[2] or "unknown",
+                }
+                for row in cursor.fetchall()
+            ]
+
+        conn.close()
+
+        return {
+            "success": True,
+            "dataset_id": None,
+            "file_name": "Guest dataset",
+            "table_name": tables[0] if tables else None,
+            "schema": schema,
+        }
+
     dataset = db.query(Dataset).filter(
         Dataset.id == dataset_id,
-        Dataset.user_id == current_user["user_id"]
+        Dataset.user_id == user_id
     ).first()
 
     if not dataset:
