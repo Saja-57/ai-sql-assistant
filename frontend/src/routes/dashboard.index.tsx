@@ -12,6 +12,9 @@ import { useHistory } from "@/lib/history";
 import {
   generateSQL,
   uploadCSV,
+  getDatasets,
+  getDatasetInsights,
+  type DatasetInsights,
   type SqlResponse,
 } from "@/lib/api";
 import { SQLBlock } from "@/components/SQLBlock";
@@ -41,6 +44,8 @@ function QueryPage() {
   const [currentDatasetId, setCurrentDatasetId] = useState<number | null>(null);
   const [currentRowsCount, setCurrentRowsCount] = useState<number | null>(null);
   const [currentColumnsCount, setCurrentColumnsCount] = useState<number | null>(null);
+
+  const [insights, setInsights] = useState<DatasetInsights | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -196,35 +201,86 @@ function QueryPage() {
     }
   };
 
-  const CompactInsights = () => {
-    if (!hasDataset) return null;
+const DatasetInsightsPanel = () => {
+  if (!hasDataset) return null;
 
-    return (
-      <div className="glass rounded-2xl p-4 shadow-card">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-primary" />
-            AI Insights
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            {selectedDatasetName}
-          </span>
+  const numericColumnsCount = 0;
+const missingValuesCount = 0;
+
+  return (
+    <div className="glass rounded-3xl p-5 md:p-6 shadow-card space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold flex items-center gap-2">
+          <Sparkles className="w-5 h-5 text-primary" />
+          AI Dataset Insights
+        </h2>
+
+        <span className="text-xs text-muted-foreground">
+          {selectedDatasetName}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="rounded-2xl bg-muted/40 p-4 text-center">
+          <div className="text-xs text-muted-foreground">Rows</div>
+          <div className="text-2xl font-bold">{currentRowsCount ?? "-"}</div>
         </div>
 
-        <div className="flex gap-3">
-          <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
-            <div className="text-xs text-muted-foreground">Rows</div>
-            <div className="text-lg font-bold">{currentRowsCount ?? "-"}</div>
-          </div>
+        <div className="rounded-2xl bg-muted/40 p-4 text-center">
+          <div className="text-xs text-muted-foreground">Columns</div>
+          <div className="text-2xl font-bold">{currentColumnsCount ?? "-"}</div>
+        </div>
 
-          <div className="flex-1 rounded-xl bg-muted/40 px-3 py-2 text-center">
-            <div className="text-xs text-muted-foreground">Columns</div>
-            <div className="text-lg font-bold">{currentColumnsCount ?? "-"}</div>
-          </div>
+        <div className="rounded-2xl bg-muted/40 p-4 text-center">
+          <div className="text-xs text-muted-foreground">Numeric</div>
+          <div className="text-2xl font-bold">{numericColumnsCount}</div>
+        </div>
+
+        <div className="rounded-2xl bg-muted/40 p-4 text-center">
+          <div className="text-xs text-muted-foreground">Missing</div>
+          <div className="text-2xl font-bold">{missingValuesCount}</div>
         </div>
       </div>
-    );
-  };
+
+      <div className="rounded-2xl bg-muted/30 p-4 text-sm text-muted-foreground leading-relaxed">
+        This dataset contains{" "}
+        <span className="font-semibold text-foreground">
+          {currentRowsCount ?? "-"}
+        </span>{" "}
+        rows and{" "}
+        <span className="font-semibold text-foreground">
+          {currentColumnsCount ?? "-"}
+        </span>{" "}
+        columns. You can ask questions about counts, averages, filters,
+        comparisons, trends, and summaries.
+      </div>
+
+      {suggestions.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-sm font-semibold text-muted-foreground">
+            Smart questions to try
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {suggestions.slice(0, 4).map((q) => (
+              <button
+                key={q}
+                onClick={() => {
+                  setQuestion(q);
+                  setGeneratedQuestion("");
+                  run(q);
+                }}
+                className="text-xs px-3 py-1.5 rounded-full bg-muted hover:bg-accent text-muted-foreground hover:text-accent-foreground transition"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
   return (
     <div className="space-y-6 animate-fade-in" dir={dir}>
@@ -366,7 +422,7 @@ function QueryPage() {
         </div>
       </div>
 
-      {!result && !loading && !error && <CompactInsights />}
+      {!result && !loading && !error && <DatasetInsightsPanel />}
 
       {error && (
         <div className="glass rounded-2xl p-4 border-l-4 border-destructive flex items-start gap-3 animate-scale-in">
@@ -416,7 +472,7 @@ function QueryPage() {
             </section>
           )}
 
-          <CompactInsights />
+         <DatasetInsightsPanel />
         </div>
       )}
 

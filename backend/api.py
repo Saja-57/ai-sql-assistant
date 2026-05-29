@@ -776,13 +776,21 @@ def generate_sql(
 
             history_id = history.id
 
+        display_sql = sql
+
+        if not is_guest and user_id is not None:
+          display_sql = display_sql.replace(f"user_{user_id}_", "")
+
+        if is_guest:
+         display_sql = display_sql.replace("guest_", "")
+
         return {
             "success": True,
             "history_id": history_id,
             "question": request.question,
             "dataset_id": dataset_id,
             "dataset_name": dataset_name,
-            "sql": sql,
+            "sql": display_sql,
             "columns": result["columns"],
             "rows": result["rows"],
         }
