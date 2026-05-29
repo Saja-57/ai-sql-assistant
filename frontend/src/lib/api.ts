@@ -191,17 +191,17 @@ export async function getDatasetInsights(
   datasetId?: number
 ): Promise<DatasetInsights> {
   try {
-    const finalDatasetId = datasetId ?? getSelectedDatasetId();
+    const finalDatasetId =
+      datasetId ?? getSelectedDatasetId() ?? 0;
 
-    const url = finalDatasetId
-      ? `${API_BASE_URL}/dataset-insights?dataset_id=${finalDatasetId}`
-      : `${API_BASE_URL}/dataset-insights`;
-
-    const response = await fetch(url, {
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
+    const response = await fetch(
+      `${API_BASE_URL}/dataset-insights?dataset_id=${finalDatasetId}`,
+      {
+        headers: {
+          ...getAuthHeaders(),
+        },
+      }
+    );
 
     return await response.json();
   } catch (error) {
