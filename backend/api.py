@@ -603,13 +603,27 @@ async def upload_csv(
             }
 
         if is_guest:
-            user_dir = os.path.join(DATA_DIR, "guest_temp")
-            table_prefix = "guest"
-            database_path = os.path.join(DATA_DIR, "guest_temp.db")
+           user_dir = os.path.join(DATA_DIR, "guest_temp")
+           table_prefix = "guest"
+           database_path = os.path.join(DATA_DIR, "guest_temp.db")
+
+           conn = sqlite3.connect(database_path)
+
+           cursor = conn.cursor()
+
+           cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+           tables = cursor.fetchall()
+
+           for table in tables:
+             cursor.execute(f'DROP TABLE IF EXISTS "{table[0]}"')
+
+           conn.commit()
+           conn.close()
         else:
             user_dir = os.path.join(DATA_DIR, f"user_{user_id}")
             table_prefix = f"user_{user_id}"
             database_path = get_database_path(user_id)
+
 
         os.makedirs(user_dir, exist_ok=True)
 
@@ -625,8 +639,6 @@ async def upload_csv(
 
         conn = sqlite3.connect(database_path)
 
-        if os.path.exists(database_path):
-         os.remove(database_path)
 
         df.to_sql(
             table_name,
