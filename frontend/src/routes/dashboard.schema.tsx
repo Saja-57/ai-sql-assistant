@@ -36,13 +36,23 @@ function SchemaPage() {
 
         const savedDataset = localStorage.getItem("selected_dataset");
 
-        if (!savedDataset) {
-          setSchema({});
-          return;
-        }
+const isGuest =
+  localStorage.getItem("guest_mode") === "true";
 
-        const dataset = JSON.parse(savedDataset);
-        const response: SchemaResponse = await getDatasetSchema(dataset.id);
+let datasetId = 0;
+
+if (savedDataset) {
+  const dataset = JSON.parse(savedDataset);
+  datasetId = dataset.id || 0;
+}
+
+if (!savedDataset && !isGuest) {
+  setSchema({});
+  return;
+}
+
+const response: SchemaResponse =
+  await getDatasetSchema(datasetId);
 
         if (!response.success) {
           setSchema({});

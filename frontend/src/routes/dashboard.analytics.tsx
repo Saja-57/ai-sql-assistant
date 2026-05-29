@@ -23,16 +23,20 @@ function AnalyticsPage() {
   async function loadInsights() {
     setLoading(true);
 
-    const datasetId = getSelectedDatasetId();
+   const datasetId = getSelectedDatasetId();
 
-    if (!datasetId) {
-      setInsights(null);
-      setLoading(false);
-      return;
-    }
+const isGuest =
+  localStorage.getItem("guest_mode") === "true";
 
-    const res = await getDatasetInsights(datasetId);
+if (!datasetId && !isGuest) {
+  setInsights(null);
+  setLoading(false);
+  return;
+}
 
+const safeDatasetId = datasetId || 0;
+
+const res = await getDatasetInsights(safeDatasetId);
     if (res.success) {
       setInsights(res);
     } else {
