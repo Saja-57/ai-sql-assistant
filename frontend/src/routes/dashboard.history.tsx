@@ -89,7 +89,7 @@ function HistoryPage() {
   }
 
   function getAnswer(item: HistoryItem) {
-    return item.result_summary || item.answer || item.error || "No saved answer";
+    return item.result_summary || item.answer || "No saved answer";
   }
 
   return (
@@ -128,24 +128,11 @@ function HistoryPage() {
                     className="flex-1 min-w-0 text-left"
                   >
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      {it.success ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-success/15 text-success">
-                          <CheckCircle2 className="w-3 h-3" /> {t.success}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-destructive/15 text-destructive">
-                          <XCircle className="w-3 h-3" /> {t.error}
-                        </span>
-                      )}
-
-                      <span className="text-[11px] text-muted-foreground">
-                        {formatDate(it)}
-                      </span>
-
-                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <Database className="w-3 h-3" />
-                        {getDatasetName(it)}
-                      </span>
+                      {it.success && (
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-600">
+    <CheckCircle2 className="w-3 h-3" /> {t.success}
+  </span>
+)}
                     </div>
 
                     <div className="space-y-1">

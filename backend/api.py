@@ -1024,7 +1024,6 @@ def get_dataset_schema(
         "dataset_id": dataset.id,
         "file_name": dataset.original_file_name,
         "table_name": dataset.table_name,
-        "rows_count": dataset.rows_count,
         "schema": {
             dataset.table_name: [
                 {
