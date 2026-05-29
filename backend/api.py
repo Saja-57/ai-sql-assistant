@@ -625,6 +625,9 @@ async def upload_csv(
 
         conn = sqlite3.connect(database_path)
 
+        if os.path.exists(database_path):
+         os.remove(database_path)
+
         df.to_sql(
             table_name,
             conn,
