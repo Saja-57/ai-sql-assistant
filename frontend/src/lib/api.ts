@@ -117,6 +117,14 @@ export async function uploadCSV(file: File): Promise<UploadResponse> {
 
     if (data.success && data.dataset_id) {
       setSelectedDatasetId(data.dataset_id);
+      localStorage.setItem(
+  "selected_dataset",
+  JSON.stringify({
+    id: data.dataset_id,
+    filename: data.file_name,
+    table_name: data.table_name,
+  })
+);
     }
 
     return data;
@@ -341,3 +349,16 @@ export async function deleteDataset(datasetId: number) {
 
   return response.json();
 }
+export async function getDatasetSchema(datasetId: number) {
+  const token = localStorage.getItem("access_token");
+
+  const response = await fetch(`${API_BASE_URL}/datasets/${datasetId}/schema`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return await response.json();
+}
+

@@ -2,7 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ChevronDown, Database, Table2 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { getSchema } from "@/lib/api";
+
+import { getDatasetSchema } from "@/lib/api";
 
 export const Route = createFileRoute("/dashboard/schema")({
   component: SchemaPage,
@@ -21,31 +22,56 @@ function SchemaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function loadSchema() {
-      try {
-        setLoading(true);
+useEffect(() => {
+  async function loadSchema() {
+    try {
+      setLoading(true);
+      setError("");
 
-        const response = await getSchema();
+      const savedDataset = localStorage.getItem("selected_dataset");
 
-        const realSchema = response.schema || {};
-
-        setSchema(realSchema);
-
-        setOpen(
-          Object.fromEntries(
-            Object.keys(realSchema).map((k) => [k, true])
-          )
-        );
-      } catch (err) {
-        setError("Failed to load schema");
-      } finally {
-        setLoading(false);
+      if (!savedDataset) {
+        setSchema({});
+        return;
       }
-    }
 
-    loadSchema();
-  }, []);
+      const dataset = JSON.parse(savedDataset);
+
+      const response = await getDatasetSchema(dataset.id);
+
+      if (!response.success) {
+        setSchema({});
+        setError(response.error || "Failed to load schema");
+        return;
+      }
+
+      const realSchema: Record<string, Column[]> = {};
+
+      if (response.tables) {
+        response.tables.forEach((table: any) => {
+          realSchema[table.name] = (table.columns || []).map((col: any) => ({
+            column_name: col.column_name || col.name,
+            data_type: col.data_type || col.type || "TEXT",
+          }));
+        });
+      }
+
+      setSchema(realSchema);
+
+      setOpen(
+        Object.fromEntries(
+          Object.keys(realSchema).map((k) => [k, true])
+        )
+      );
+    } catch (err) {
+      setError("Failed to load schema");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  loadSchema();
+}, []);
 
   const tables = Object.entries(schema);
 
