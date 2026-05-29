@@ -15,6 +15,8 @@ import json
 from database import engine, get_db
 from models import Base, QueryHistory, User, Dataset
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+from database import Dataset
 
 from passlib.context import CryptContext
 from jose import jwt, JWTError
@@ -996,3 +998,38 @@ def delete_dataset(
         "success": True,
         "message": "Dataset deleted successfully"
     }
+
+@app.get("/datasets/{dataset_id}/schema")
+def get_dataset_schema(
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    dataset = db.query(Dataset).filter(
+        Dataset.id == dataset_id,
+        Dataset.user_id == current_user["user_id"]
+    ).first()
+
+    if not dataset:
+        return {
+            "success": False,
+            "error": "Dataset not found"
+        }
+
+    schema = {}
+
+    table_name = dataset.table_name
+
+    columns = db.execute(
+        text(f'PRAGMA table_info("{table_name}")')
+    ).fetchall()
+
+    schema[table_name] = [
+        {
+            "column_name": column[1],
+            "data_type": column[2],
+        }
+        for column in columns
+    ]
+
+    return schema
