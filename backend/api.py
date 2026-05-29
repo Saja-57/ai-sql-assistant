@@ -15,7 +15,7 @@ import json
 from database import engine, get_db
 from models import Base, QueryHistory, User, Dataset
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+
 
 from passlib.context import CryptContext
 from jose import jwt, JWTError
@@ -1015,20 +1015,21 @@ def get_dataset_schema(
             "error": "Dataset not found"
         }
 
-    schema = {}
+    columns = dataset.columns or []
+    column_types = dataset.column_types or {}
 
-    table_name = dataset.table_name
-
-    columns = db.execute(
-        text(f'PRAGMA table_info("{table_name}")')
-    ).fetchall()
-
-    schema[table_name] = [
-        {
-            "column_name": column[1],
-            "data_type": column[2],
+    return {
+        "success": True,
+        "dataset_id": dataset.id,
+        "file_name": dataset.file_name,
+        "table_name": dataset.table_name,
+        "schema": {
+            dataset.table_name: [
+                {
+                    "column_name": col,
+                    "data_type": column_types.get(col, "unknown")
+                }
+                for col in columns
+            ]
         }
-        for column in columns
-    ]
-
-    return schema
+    }
