@@ -1010,24 +1010,26 @@ def get_dataset_schema(
     ).first()
 
     if not dataset:
-        return {
-            "success": False,
-            "error": "Dataset not found"
-        }
+        return {"success": False, "error": "Dataset not found"}
 
-    columns = dataset.columns or []
-    column_types = dataset.column_types or {}
+    columns = []
+    if dataset.columns_json:
+        try:
+            columns = json.loads(dataset.columns_json)
+        except Exception:
+            columns = []
 
     return {
         "success": True,
         "dataset_id": dataset.id,
-        "file_name": dataset.file_name,
+        "file_name": dataset.original_file_name,
         "table_name": dataset.table_name,
+        "rows_count": dataset.rows_count,
         "schema": {
             dataset.table_name: [
                 {
                     "column_name": col,
-                    "data_type": column_types.get(col, "unknown")
+                    "data_type": "unknown"
                 }
                 for col in columns
             ]
