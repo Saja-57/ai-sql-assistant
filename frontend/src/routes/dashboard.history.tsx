@@ -127,15 +127,19 @@ function HistoryPage() {
                     onClick={() => setOpenId(isOpen ? null : it.id)}
                     className="flex-1 min-w-0 text-left"
                   >
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      {it.success && (
-  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-600">
-    <CheckCircle2 className="w-3 h-3" /> {t.success}
-  </span>
-)}
-                    </div>
+                   <div className="flex flex-wrap items-center gap-2 mb-2">
+  {it.success && (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-600">
+      <CheckCircle2 className="w-3 h-3" /> {t.success}
+    </span>
+  )}
 
-                    <div className="space-y-1">
+  <span className="text-[11px] text-muted-foreground">
+    {formatDate(it)}
+  </span>
+</div>
+
+<div className="space-y-1">
   <div className="text-xs text-muted-foreground">
     Dataset:{" "}
     <span className="font-medium text-foreground">
